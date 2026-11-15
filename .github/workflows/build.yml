@@ -1,0 +1,56 @@
+name: Build TV Home
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # First run only: unpack the uploaded source bundle into real files.
+      - name: Unpack source bundle
+        run: |
+          if [ -f bundle.b64 ]; then
+            base64 -d bundle.b64 | tar -xz
+            git rm -q bundle.b64
+            git config user.name "github-actions[bot]"
+            git config user.email "41898299+github-actions[bot]@users.noreply.github.com"
+            git add -A
+            git commit -m "Unpack TV Home source"
+            git push
+          fi
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: android-actions/setup-android@v3
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Restore signing key
+        run: base64 -d app/keystore.b64 > app/tvhome.keystore
+
+      - name: Build APK
+        run: gradle --no-daemon :app:assembleRelease
+
+      - name: Rename APK
+        run: cp app/build/outputs/apk/release/app-release.apk tvhome.apk
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: build-${{ github.run_number }}
+          name: TV Home build ${{ github.run_number }}
+          make_latest: true
+          files: tvhome.apk

@@ -50,7 +50,8 @@ public class MainActivity extends Activity {
     private static final int ACCENT = 0xFFFFB347;
     private static final int TILE_BG = 0xFF1A2440;
     private static final int TEXT_DIM = 0xFF9AA4BF;
-    private static final int ALL_COLUMNS = 6;
+    private static final int SIDE_PAD = 56;     // dp
+    private static final int SMALL_W = 150, SMALL_H = 84, SMALL_GAP = 18;   // dp
 
     /** One launchable app. */
     static final class App {
@@ -135,7 +136,7 @@ public class MainActivity extends Activity {
 
         LinearLayout col = new LinearLayout(this);
         col.setOrientation(LinearLayout.VERTICAL);
-        col.setPadding(dp(56), dp(32), dp(56), dp(48));
+        col.setPadding(dp(SIDE_PAD), dp(32), dp(SIDE_PAD), dp(48));
         col.setClipChildren(false);
         col.setClipToPadding(false);
         scroller.addView(col);
@@ -192,7 +193,9 @@ public class MainActivity extends Activity {
         // all apps
         col.addView(sectionTitle("All apps"));
         allGrid = new GridLayout(this);
-        allGrid.setColumnCount(ALL_COLUMNS);
+        float widthDp = getResources().getDisplayMetrics().widthPixels / getResources().getDisplayMetrics().density;
+        int cols = (int) ((widthDp - 2 * SIDE_PAD - 16) / (SMALL_W + SMALL_GAP));
+        allGrid.setColumnCount(Math.max(3, cols));
         allGrid.setClipChildren(false);
         allGrid.setPadding(dp(8), dp(10), dp(8), dp(10));
         col.addView(allGrid);
@@ -267,6 +270,14 @@ public class MainActivity extends Activity {
         });
         apps.clear();
         for (App a : list) apps.put(a.pkg, a);
+
+        // First run: hide Amazon's own extras (shopping, Luna, miniTV...).
+        if (!Prefs.hasHidden(this)) {
+            java.util.Set<String> h = new java.util.HashSet<>();
+            java.util.List<String> keep = java.util.Arrays.asList(Prefs.AMAZON_KEEP);
+            for (String p : apps.keySet()) if (p.startsWith("com.amazon.") && !keep.contains(p)) h.add(p);
+            Prefs.setHidden(this, h);
+        }
     }
 
     private void addFrom(PackageManager pm, String category, Map<String, App> out) {
@@ -351,8 +362,8 @@ public class MainActivity extends Activity {
     }
 
     private View tile(final App a, final boolean big) {
-        final int w = big ? dp(240) : dp(160);
-        final int h = big ? dp(135) : dp(90);
+        final int w = big ? dp(240) : dp(SMALL_W);
+        final int h = big ? dp(135) : dp(SMALL_H);
 
         final FrameLayout f = new FrameLayout(this);
         f.setTag(a.pkg);
@@ -396,7 +407,7 @@ public class MainActivity extends Activity {
             GridLayout.LayoutParams g = new GridLayout.LayoutParams();
             g.width = w;
             g.height = h;
-            g.setMargins(0, 0, dp(18), dp(18));
+            g.setMargins(0, 0, dp(SMALL_GAP), dp(SMALL_GAP));
             lp = g;
         }
         f.setLayoutParams(lp);

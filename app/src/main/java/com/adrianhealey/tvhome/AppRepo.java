@@ -69,8 +69,8 @@ final class AppRepo {
         a.pkg = CAMERAS_PKG;
         a.label = "Cameras";
         a.launch = new Intent(c, CameraActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-        a.isBanner = false;
-        a.tint = 0xFF2C3E50;   // blue-grey card behind the white camera icon
+        a.isBanner = true;    // the icon is a full glass tile, like the other banners
+        a.tint = 0xFF28324C;   // used for the blurred backdrop on the top shelf
         try { a.art = c.getDrawable(R.drawable.ic_cameras); } catch (Exception ignored) { }
         return a;
     }

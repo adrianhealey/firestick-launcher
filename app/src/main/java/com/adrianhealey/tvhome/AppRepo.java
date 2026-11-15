@@ -25,6 +25,10 @@ import java.util.Set;
 final class AppRepo {
     private AppRepo() { }
 
+    // Built-in "Cameras" app: opens the Home Assistant cameras web app in a WebView.
+    static final String CAMERAS_PKG = "tvhome.builtin.cameras";
+    static final String CAMERAS_URL = "https://adrianhealey.github.io/glasses/door/";
+
     static final class App {
         String pkg;
         String label;
@@ -45,7 +49,9 @@ final class AppRepo {
         List<App> list = new ArrayList<>(found.values());
         Collections.sort(list, (a, b) -> a.label.compareToIgnoreCase(b.label));
         Map<String, App> apps = new LinkedHashMap<>();
+        apps.put(CAMERAS_PKG, cameras(c));   // built-in Cameras app, listed first
         for (App a : list) apps.put(a.pkg, a);
+        Prefs.seedCameras(c, CAMERAS_PKG);   // one-time: put it on the Home row
 
         // First run: hide Amazon's own extras (shopping, Luna, miniTV...).
         if (!Prefs.hasHidden(c)) {
@@ -55,6 +61,18 @@ final class AppRepo {
             Prefs.setHidden(c, h);
         }
         return apps;
+    }
+
+    /** The built-in Cameras entry, launching our own WebView activity. */
+    private static App cameras(Context c) {
+        App a = new App();
+        a.pkg = CAMERAS_PKG;
+        a.label = "Cameras";
+        a.launch = new Intent(c, CameraActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        a.isBanner = false;
+        a.tint = 0xFF2C3E50;   // blue-grey card behind the white camera icon
+        try { a.art = c.getDrawable(R.drawable.ic_cameras); } catch (Exception ignored) { }
+        return a;
     }
 
     private static void addFrom(PackageManager pm, String category, Map<String, App> out) {

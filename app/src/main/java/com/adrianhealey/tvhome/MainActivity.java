@@ -44,6 +44,7 @@ public class MainActivity extends Activity implements Tiles.Listener {
 
     // Sizes in dp. Five icons fit across a 1080p screen.
     static final int SIDE = 48, ICON_W = 156, ICON_H = 94, ICON_GAP = 20;
+    static final int PREVIEW_W = 336, PREVIEW_H = 189;
 
     private final Handler ui = new Handler(Looper.getMainLooper());
     private final Map<String, Bitmap> blurCache = new HashMap<>();
@@ -56,6 +57,7 @@ public class MainActivity extends Activity implements Tiles.Listener {
     private LinearLayout row;
     private HorizontalScrollView rowScroll;
     private TextView emptyRow;
+    private WeatherPanel weather;
 
     private String focusPkg;            // tile to re-focus after a rebuild
     private String movingPkg;           // app being moved, or null
@@ -92,6 +94,7 @@ public class MainActivity extends Activity implements Tiles.Listener {
         super.onResume();
         // The Apps screen may have changed the home row.
         if (Prefs.consumeChanged(this)) { apps = AppRepo.load(this); renderRow(); }
+        if (weather != null) weather.refreshIfStale();
     }
 
     @Override
@@ -165,13 +168,14 @@ public class MainActivity extends Activity implements Tiles.Listener {
         shelf.setClipChildren(false);
         preview = new FrameLayout(this);
         preview.setElevation(dp(16));
-        shelf.addView(preview, new LinearLayout.LayoutParams(dp(400), dp(225)));
+        shelf.addView(preview, new LinearLayout.LayoutParams(dp(PREVIEW_W), dp(PREVIEW_H)));
 
         LinearLayout words = new LinearLayout(this);
         words.setOrientation(LinearLayout.VERTICAL);
-        words.setPadding(dp(36), 0, 0, 0);
+        words.setPadding(dp(28), 0, dp(20), 0);
         title = new TextView(this);
-        title.setTextSize(TypedValue.COMPLEX_UNIT_SP, 40);
+        title.setTextSize(TypedValue.COMPLEX_UNIT_SP, 30);
+        title.setMaxLines(2);
         title.setTextColor(Color.WHITE);
         title.setTypeface(Typeface.create("sans-serif", Typeface.BOLD));
         title.setShadowLayer(dp(8), 0, dp(2), 0x80000000);
@@ -182,6 +186,8 @@ public class MainActivity extends Activity implements Tiles.Listener {
         words.addView(title);
         words.addView(hint);
         shelf.addView(words, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+        weather = new WeatherPanel(this);
+        shelf.addView(weather, new LinearLayout.LayoutParams(dp(330), ViewGroup.LayoutParams.WRAP_CONTENT));
         col.addView(shelf, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1));
 
         // the home row
@@ -261,7 +267,7 @@ public class MainActivity extends Activity implements Tiles.Listener {
             setBackdrop(new ColorDrawable(0xFF101014));
             return;
         }
-        preview.addView(Tiles.card(this, a, dp(400), dp(225), dp(16)), match());
+        preview.addView(Tiles.card(this, a, dp(PREVIEW_W), dp(PREVIEW_H), dp(16)), match());
         title.setText(a.label);
         hint.setText(movingPkg != null
                 ? "Use left and right to move it, then press Select."

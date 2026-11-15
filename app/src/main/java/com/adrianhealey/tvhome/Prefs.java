@@ -16,6 +16,7 @@ final class Prefs {
 
     // Apps pinned to the top row the first time the launcher runs (if installed).
     static final String[] DEFAULT_FAVS = {
+            "tvhome.builtin.cameras",       // built-in Cameras (HA cameras web app)
             "com.edde746.plezy",            // Plezy (Plex)
             "org.smarttube.stable",         // SmartTube
             "com.amazon.firetv.youtube",
@@ -45,6 +46,15 @@ final class Prefs {
 
     static void setFavs(Context c, List<String> favs) {
         sp(c).edit().putString("favs", TextUtils.join(",", favs)).putBoolean("changed", true).apply();
+    }
+
+    /** One time only, add the built-in Cameras app to the Home row (respects a later removal). */
+    static void seedCameras(Context c, String pkg) {
+        SharedPreferences sp = sp(c);
+        if (sp.getBoolean("cam_seeded", false)) return;
+        List<String> f = favs(c);
+        if (!f.contains(pkg)) { f.add(0, pkg); setFavs(c, f); }
+        sp.edit().putBoolean("cam_seeded", true).apply();
     }
 
     /** True once after the home row or hidden list changed (then cleared). */

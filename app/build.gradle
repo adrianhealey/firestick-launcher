@@ -1,0 +1,43 @@
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace 'com.adrianhealey.tvhome'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId 'com.adrianhealey.tvhome'
+        minSdk 22
+        targetSdk 30
+        versionCode (System.getenv('GITHUB_RUN_NUMBER') ? System.getenv('GITHUB_RUN_NUMBER').toInteger() : 1)
+        versionName "1.0." + (System.getenv('GITHUB_RUN_NUMBER') ?: '0')
+    }
+
+    signingConfigs {
+        home {
+            // Keystore is decoded from keystore.b64 by the build workflow.
+            storeFile file('tvhome.keystore')
+            storePassword 'tvhome-launcher'
+            keyAlias 'tvhome'
+            keyPassword 'tvhome-launcher'
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            signingConfig signingConfigs.home
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
+
+    lint {
+        abortOnError false
+        checkReleaseBuilds false
+    }
+}

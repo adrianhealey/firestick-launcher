@@ -1,0 +1,4 @@
+build/
+.gradle/
+app/tvhome.keystore
+local.properties

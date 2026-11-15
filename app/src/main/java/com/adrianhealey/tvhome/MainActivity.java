@@ -194,7 +194,7 @@ public class MainActivity extends Activity {
         col.addView(sectionTitle("All apps"));
         allGrid = new GridLayout(this);
         float widthDp = getResources().getDisplayMetrics().widthPixels / getResources().getDisplayMetrics().density;
-        int cols = (int) ((widthDp - 2 * SIDE_PAD - 16) / (SMALL_W + SMALL_GAP));
+        int cols = (int) ((widthDp - 2 * SIDE_PAD - 16 + SMALL_GAP) / (SMALL_W + SMALL_GAP));
         allGrid.setColumnCount(Math.max(3, cols));
         allGrid.setClipChildren(false);
         allGrid.setPadding(dp(8), dp(10), dp(8), dp(10));

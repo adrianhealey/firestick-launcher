@@ -44,7 +44,14 @@ final class Prefs {
     }
 
     static void setFavs(Context c, List<String> favs) {
-        sp(c).edit().putString("favs", TextUtils.join(",", favs)).apply();
+        sp(c).edit().putString("favs", TextUtils.join(",", favs)).putBoolean("changed", true).apply();
+    }
+
+    /** True once after the home row or hidden list changed (then cleared). */
+    static boolean consumeChanged(Context c) {
+        boolean ch = sp(c).getBoolean("changed", false);
+        if (ch) sp(c).edit().putBoolean("changed", false).apply();
+        return ch;
     }
 
     // Amazon apps that stay visible; every other com.amazon.* app starts hidden.
@@ -63,7 +70,7 @@ final class Prefs {
     }
 
     static void setHidden(Context c, Set<String> hidden) {
-        sp(c).edit().putStringSet("hidden", new HashSet<>(hidden)).apply();
+        sp(c).edit().putStringSet("hidden", new HashSet<>(hidden)).putBoolean("changed", true).apply();
     }
 
     static boolean watcherOn(Context c) { return sp(c).getBoolean("watcher", true); }

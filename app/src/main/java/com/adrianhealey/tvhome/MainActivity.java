@@ -1,82 +1,74 @@
 package com.adrianhealey.tvhome;
 
+import android.animation.ObjectAnimator;
+import android.animation.ValueAnimator;
 import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.BroadcastReceiver;
-import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
-import android.content.pm.PackageManager;
-import android.content.pm.ResolveInfo;
+import android.graphics.Bitmap;
 import android.graphics.Color;
 import android.graphics.Typeface;
+import android.graphics.drawable.BitmapDrawable;
+import android.graphics.drawable.ColorDrawable;
 import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
-import android.graphics.drawable.StateListDrawable;
-import android.net.Uri;
+import android.graphics.drawable.TransitionDrawable;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
-import android.provider.Settings;
-import android.text.TextUtils;
 import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.KeyEvent;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.FrameLayout;
-import android.widget.GridLayout;
 import android.widget.HorizontalScrollView;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
-import android.widget.ScrollView;
 import android.widget.TextClock;
 import android.widget.TextView;
-import android.widget.Toast;
 
-import java.util.ArrayList;
 import java.util.Collections;
-import java.util.Comparator;
 import java.util.HashMap;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
-import java.util.Set;
 
-public class MainActivity extends Activity {
+/**
+ * Apple TV-style home screen: a large "top shelf" preview of the selected app over a
+ * blurred backdrop, and one row of apps along the bottom.
+ */
+public class MainActivity extends Activity implements Tiles.Listener {
 
-    private static final int ACCENT = 0xFFFFB347;
-    private static final int TILE_BG = 0xFF1A2440;
-    private static final int TEXT_DIM = 0xFF9AA4BF;
-    private static final int SIDE_PAD = 56;     // dp
-    private static final int SMALL_W = 150, SMALL_H = 84, SMALL_GAP = 18;   // dp
+    // Sizes in dp. Five icons fit across a 1080p screen.
+    static final int SIDE = 48, ICON_W = 156, ICON_H = 94, ICON_GAP = 20;
 
-    /** One launchable app. */
-    static final class App {
-        String pkg;
-        String label;
-        Intent launch;
-        Drawable art;
-        boolean isBanner;
-    }
-
-    private final Map<String, App> apps = new LinkedHashMap<>();
     private final Handler ui = new Handler(Looper.getMainLooper());
+    private final Map<String, Bitmap> blurCache = new HashMap<>();
+    private Map<String, AppRepo.App> apps = new HashMap<>();
 
-    private LinearLayout favRow;
-    private GridLayout allGrid;
-    private TextView favEmpty;
-    private ScrollView scroller;
-    private String focusPkg;           // tile to re-focus after a rebuild
-    private boolean focusInFavs = true;
+    private ImageView backdrop;
+    private Drawable backdropNow;
+    private FrameLayout preview;
+    private TextView title, hint;
+    private LinearLayout row;
+    private HorizontalScrollView rowScroll;
+    private TextView emptyRow;
+
+    private String focusPkg;            // tile to re-focus after a rebuild
+    private String movingPkg;           // app being moved, or null
+    private ObjectAnimator wiggle;
+    private boolean ignoreNextUp;       // the Select release that ended a press-and-hold
 
     private final BroadcastReceiver packagesChanged = new BroadcastReceiver() {
         @Override public void onReceive(Context c, Intent i) { reloadSoon(); }
     };
 
-    // ------------------------------------------------------------------ setup
+    private int dp(float v) { return Tiles.dp(this, v); }
+
+    // ---------------------------------------------------------------- setup
 
     @Override
     protected void onCreate(Bundle b) {
@@ -91,8 +83,15 @@ public class MainActivity extends Activity {
         f.addDataScheme("package");
         registerReceiver(packagesChanged, f);
 
-        loadApps();
-        render();
+        apps = AppRepo.load(this);
+        renderRow();
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        // The Apps screen may have changed the home row.
+        if (Prefs.consumeChanged(this)) { apps = AppRepo.load(this); renderRow(); }
     }
 
     @Override
@@ -104,488 +103,286 @@ public class MainActivity extends Activity {
     @Override
     protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
-        // Home pressed while already here: jump back to the first favourite.
-        scroller.smoothScrollTo(0, 0);
-        focusFirst();
+        stopMoving();
+        rowScroll.smoothScrollTo(0, 0);
+        if (row.getChildCount() > 0) row.getChildAt(0).requestFocus();
     }
 
     @Override
     public void onBackPressed() {
-        // The home screen has nowhere to go back to.
-    }
-
-    private int dp(float v) {
-        return Math.round(TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, v,
-                getResources().getDisplayMetrics()));
-    }
-
-    private TextView text(String s, float sp, int color, boolean bold) {
-        TextView t = new TextView(this);
-        t.setText(s);
-        t.setTextSize(TypedValue.COMPLEX_UNIT_SP, sp);
-        t.setTextColor(color);
-        if (bold) t.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
-        return t;
+        if (movingPkg != null) stopMoving();
+        // otherwise nothing: the home screen has nowhere to go back to
     }
 
     private View buildUi() {
-        scroller = new ScrollView(this);
-        scroller.setFillViewport(true);
-        scroller.setVerticalScrollBarEnabled(false);
-        scroller.setSmoothScrollingEnabled(true);
+        FrameLayout root = new FrameLayout(this);
+        root.setBackgroundColor(Color.BLACK);
+        root.setClipChildren(false);
+
+        backdrop = new ImageView(this);
+        backdrop.setScaleType(ImageView.ScaleType.CENTER_CROP);
+        backdropNow = new ColorDrawable(0xFF101014);
+        backdrop.setImageDrawable(backdropNow);
+        root.addView(backdrop, match());
+
+        View scrim = new View(this);
+        scrim.setBackground(new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
+                new int[]{0x8C000000, 0x66000000, 0xE6000000}));
+        root.addView(scrim, match());
 
         LinearLayout col = new LinearLayout(this);
         col.setOrientation(LinearLayout.VERTICAL);
-        col.setPadding(dp(SIDE_PAD), dp(32), dp(SIDE_PAD), dp(48));
+        col.setPadding(dp(SIDE), dp(28), dp(SIDE), dp(26));
         col.setClipChildren(false);
         col.setClipToPadding(false);
-        scroller.addView(col);
+        root.addView(col, match());
 
-        // header: clock + date on the left, buttons on the right
-        LinearLayout header = new LinearLayout(this);
-        header.setOrientation(LinearLayout.HORIZONTAL);
-        header.setGravity(Gravity.CENTER_VERTICAL);
-
-        LinearLayout clockCol = new LinearLayout(this);
-        clockCol.setOrientation(LinearLayout.VERTICAL);
+        // top bar: Apps, Settings, time
+        LinearLayout top = new LinearLayout(this);
+        top.setOrientation(LinearLayout.HORIZONTAL);
+        top.setGravity(Gravity.CENTER_VERTICAL);
+        top.setClipChildren(false);
+        top.addView(new View(this), new LinearLayout.LayoutParams(0, 1, 1));
+        top.addView(Tiles.roundButton(this, R.drawable.ic_apps, "All apps",
+                v -> startActivity(new Intent(this, AppsActivity.class))), new LinearLayout.LayoutParams(dp(52), dp(52)));
+        top.addView(new View(this), new LinearLayout.LayoutParams(dp(16), 1));
+        top.addView(Tiles.roundButton(this, R.drawable.ic_settings, "Settings",
+                v -> AppRepo.openSystemSettings(this)), new LinearLayout.LayoutParams(dp(52), dp(52)));
+        top.addView(new View(this), new LinearLayout.LayoutParams(dp(22), 1));
         TextClock clock = new TextClock(this);
         clock.setFormat24Hour("HH:mm");
         clock.setFormat12Hour("HH:mm");
-        clock.setTextSize(TypedValue.COMPLEX_UNIT_SP, 44);
+        clock.setTextSize(TypedValue.COMPLEX_UNIT_SP, 24);
         clock.setTextColor(Color.WHITE);
-        clock.setTypeface(Typeface.create("sans-serif-light", Typeface.NORMAL));
-        TextClock date = new TextClock(this);
-        date.setFormat24Hour("EEEE d MMMM");
-        date.setFormat12Hour("EEEE d MMMM");
-        date.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16);
-        date.setTextColor(TEXT_DIM);
-        clockCol.addView(clock);
-        clockCol.addView(date);
-        header.addView(clockCol, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+        clock.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+        top.addView(clock);
+        col.addView(top);
 
-        header.addView(pill("Settings", new View.OnClickListener() {
-            @Override public void onClick(View v) { openSystemSettings(); }
-        }));
-        View gap = new View(this);
-        header.addView(gap, new LinearLayout.LayoutParams(dp(12), 1));
-        header.addView(pill("Launcher", new View.OnClickListener() {
-            @Override public void onClick(View v) { showLauncherMenu(); }
-        }));
-        col.addView(header);
+        // top shelf: big preview of the selected app
+        LinearLayout shelf = new LinearLayout(this);
+        shelf.setOrientation(LinearLayout.HORIZONTAL);
+        shelf.setGravity(Gravity.CENTER_VERTICAL);
+        shelf.setClipChildren(false);
+        preview = new FrameLayout(this);
+        preview.setElevation(dp(16));
+        shelf.addView(preview, new LinearLayout.LayoutParams(dp(400), dp(225)));
 
-        // favourites
-        col.addView(sectionTitle("Favourites"));
-        HorizontalScrollView hs = new HorizontalScrollView(this);
-        hs.setHorizontalScrollBarEnabled(false);
-        hs.setClipChildren(false);
-        hs.setClipToPadding(false);
-        hs.setPadding(dp(8), dp(10), dp(8), dp(10));
-        favRow = new LinearLayout(this);
-        favRow.setOrientation(LinearLayout.HORIZONTAL);
-        favRow.setClipChildren(false);
-        hs.addView(favRow);
-        col.addView(hs);
-        favEmpty = text("Press and hold Select (or the ☰ button) on any app below to add it here.",
-                15, TEXT_DIM, false);
-        favEmpty.setPadding(dp(8), 0, 0, dp(8));
-        col.addView(favEmpty);
+        LinearLayout words = new LinearLayout(this);
+        words.setOrientation(LinearLayout.VERTICAL);
+        words.setPadding(dp(36), 0, 0, 0);
+        title = new TextView(this);
+        title.setTextSize(TypedValue.COMPLEX_UNIT_SP, 40);
+        title.setTextColor(Color.WHITE);
+        title.setTypeface(Typeface.create("sans-serif", Typeface.BOLD));
+        title.setShadowLayer(dp(8), 0, dp(2), 0x80000000);
+        hint = new TextView(this);
+        hint.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16);
+        hint.setTextColor(0xCCEBEBF5);
+        hint.setPadding(0, dp(8), 0, 0);
+        words.addView(title);
+        words.addView(hint);
+        shelf.addView(words, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+        col.addView(shelf, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1));
 
-        // all apps
-        col.addView(sectionTitle("All apps"));
-        allGrid = new GridLayout(this);
-        float widthDp = getResources().getDisplayMetrics().widthPixels / getResources().getDisplayMetrics().density;
-        int cols = (int) ((widthDp - 2 * SIDE_PAD - 16 + SMALL_GAP) / (SMALL_W + SMALL_GAP));
-        allGrid.setColumnCount(Math.max(3, cols));
-        allGrid.setClipChildren(false);
-        allGrid.setPadding(dp(8), dp(10), dp(8), dp(10));
-        col.addView(allGrid);
+        // the home row
+        rowScroll = new HorizontalScrollView(this);
+        rowScroll.setHorizontalScrollBarEnabled(false);
+        rowScroll.setClipChildren(false);
+        rowScroll.setClipToPadding(false);
+        rowScroll.setPadding(dp(12), dp(16), dp(12), dp(4));
+        row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setClipChildren(false);
+        row.setClipToPadding(false);
+        rowScroll.addView(row);
+        col.addView(rowScroll, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
+                dp(ICON_H + 70)));
 
-        return scroller;
+        emptyRow = new TextView(this);
+        emptyRow.setText("Open Apps (top right) and press and hold an app to add it here.");
+        emptyRow.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16);
+        emptyRow.setTextColor(0xCCEBEBF5);
+        emptyRow.setVisibility(View.GONE);
+        col.addView(emptyRow);
+
+        return root;
     }
 
-    private TextView sectionTitle(String s) {
-        TextView t = text(s, 20, Color.WHITE, true);
-        t.setPadding(dp(8), dp(28), 0, dp(4));
-        return t;
+    private static FrameLayout.LayoutParams match() {
+        return new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
     }
 
-    private TextView pill(String label, View.OnClickListener click) {
-        TextView t = text(label, 16, Color.WHITE, true);
-        t.setPadding(dp(22), dp(10), dp(22), dp(10));
-        t.setFocusable(true);
-        t.setClickable(true);
-        t.setBackground(focusBackground(dp(24), 0x33FFFFFF));
-        t.setOnClickListener(click);
-        t.setOnFocusChangeListener(new View.OnFocusChangeListener() {
-            @Override public void onFocusChange(View v, boolean has) {
-                ((TextView) v).setTextColor(has ? Color.BLACK : Color.WHITE);
-            }
-        });
-        return t;
-    }
-
-    /** Rounded background that turns accent-coloured and outlined when focused. */
-    private StateListDrawable focusBackground(int radius, int normal) {
-        GradientDrawable on = new GradientDrawable();
-        on.setCornerRadius(radius);
-        on.setColor(ACCENT);
-        GradientDrawable off = new GradientDrawable();
-        off.setCornerRadius(radius);
-        off.setColor(normal);
-        StateListDrawable s = new StateListDrawable();
-        s.addState(new int[]{android.R.attr.state_focused}, on);
-        s.addState(new int[]{}, off);
-        return s;
-    }
-
-    private StateListDrawable tileBackground(int radius) {
-        GradientDrawable on = new GradientDrawable();
-        on.setCornerRadius(radius);
-        on.setColor(TILE_BG);
-        on.setStroke(dp(3), ACCENT);
-        GradientDrawable off = new GradientDrawable();
-        off.setCornerRadius(radius);
-        off.setColor(TILE_BG);
-        StateListDrawable s = new StateListDrawable();
-        s.addState(new int[]{android.R.attr.state_focused}, on);
-        s.addState(new int[]{}, off);
-        return s;
-    }
-
-    // ------------------------------------------------------------- app list
-
-    private void loadApps() {
-        PackageManager pm = getPackageManager();
-        Map<String, App> found = new HashMap<>();
-        // TV (leanback) entries first, so their banners win over phone icons.
-        addFrom(pm, Intent.CATEGORY_LEANBACK_LAUNCHER, found);
-        addFrom(pm, Intent.CATEGORY_LAUNCHER, found);
-        found.remove(getPackageName());
-
-        List<App> list = new ArrayList<>(found.values());
-        Collections.sort(list, new Comparator<App>() {
-            @Override public int compare(App a, App b) {
-                return a.label.compareToIgnoreCase(b.label);
-            }
-        });
-        apps.clear();
-        for (App a : list) apps.put(a.pkg, a);
-
-        // First run: hide Amazon's own extras (shopping, Luna, miniTV...).
-        if (!Prefs.hasHidden(this)) {
-            java.util.Set<String> h = new java.util.HashSet<>();
-            java.util.List<String> keep = java.util.Arrays.asList(Prefs.AMAZON_KEEP);
-            for (String p : apps.keySet()) if (p.startsWith("com.amazon.") && !keep.contains(p)) h.add(p);
-            Prefs.setHidden(this, h);
-        }
-    }
-
-    private void addFrom(PackageManager pm, String category, Map<String, App> out) {
-        Intent q = new Intent(Intent.ACTION_MAIN).addCategory(category);
-        List<ResolveInfo> res;
-        try { res = pm.queryIntentActivities(q, 0); } catch (Exception e) { return; }
-        for (ResolveInfo ri : res) {
-            if (ri.activityInfo == null) continue;
-            String pkg = ri.activityInfo.packageName;
-            if (out.containsKey(pkg)) continue;
-            App a = new App();
-            a.pkg = pkg;
-            CharSequence l = ri.loadLabel(pm);
-            a.label = l == null ? pkg : l.toString();
-            a.launch = new Intent(Intent.ACTION_MAIN)
-                    .addCategory(category)
-                    .setComponent(new ComponentName(pkg, ri.activityInfo.name))
-                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED);
-            Drawable banner = null;
-            try { banner = ri.activityInfo.loadBanner(pm); } catch (Exception ignored) { }
-            if (banner != null) {
-                a.art = banner;
-                a.isBanner = true;
-            } else {
-                try { a.art = ri.loadIcon(pm); } catch (Exception ignored) { }
-            }
-            out.put(pkg, a);
-        }
-    }
+    // --------------------------------------------------------------- render
 
     private void reloadSoon() {
-        ui.removeCallbacks(reloadRunnable);
-        ui.postDelayed(reloadRunnable, 500);
+        ui.removeCallbacks(reload);
+        ui.postDelayed(reload, 500);
     }
 
-    private final Runnable reloadRunnable = new Runnable() {
-        @Override public void run() { loadApps(); render(); }
-    };
+    private final Runnable reload = () -> { apps = AppRepo.load(this); renderRow(); };
 
-    // ---------------------------------------------------------------- render
-
-    private void render() {
+    private void renderRow() {
         View cur = getCurrentFocus();
-        if (cur != null && cur.getTag() instanceof String) {
-            focusPkg = (String) cur.getTag();
-            focusInFavs = cur.getParent() == favRow;
+        if (cur != null && cur.getTag() instanceof String) focusPkg = (String) cur.getTag();
+
+        List<String> home = AppRepo.homeRow(this, apps);
+        row.removeAllViews();
+        for (String p : home) {
+            View t = Tiles.appTile(this, apps.get(p), dp(ICON_W), dp(ICON_H), this);
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT);
+            lp.rightMargin = dp(ICON_GAP);
+            row.addView(t, lp);
         }
+        emptyRow.setVisibility(home.isEmpty() ? View.VISIBLE : View.GONE);
+        if (home.isEmpty()) showShelf(null);
 
-        List<String> favs = new ArrayList<>();
-        for (String p : Prefs.favs(this)) if (apps.containsKey(p) && !favs.contains(p)) favs.add(p);
-        Set<String> hidden = Prefs.hidden(this);
-
-        favRow.removeAllViews();
-        for (String p : favs) favRow.addView(tile(apps.get(p), true));
-        favEmpty.setVisibility(favs.isEmpty() ? View.VISIBLE : View.GONE);
-
-        allGrid.removeAllViews();
-        for (App a : apps.values()) {
-            if (hidden.contains(a.pkg)) continue;
-            allGrid.addView(tile(a, false));
-        }
-
-        ui.post(new Runnable() {
-            @Override public void run() { restoreFocus(); }
-        });
-    }
-
-    private void restoreFocus() {
-        if (focusPkg != null) {
-            ViewGroup g = focusInFavs ? favRow : allGrid;
-            for (int i = 0; i < g.getChildCount(); i++) {
-                View v = g.getChildAt(i);
-                if (focusPkg.equals(v.getTag())) { v.requestFocus(); return; }
-            }
-        }
-        focusFirst();
-    }
-
-    private void focusFirst() {
-        if (favRow.getChildCount() > 0) favRow.getChildAt(0).requestFocus();
-        else if (allGrid.getChildCount() > 0) allGrid.getChildAt(0).requestFocus();
-    }
-
-    private View tile(final App a, final boolean big) {
-        final int w = big ? dp(240) : dp(SMALL_W);
-        final int h = big ? dp(135) : dp(SMALL_H);
-
-        final FrameLayout f = new FrameLayout(this);
-        f.setTag(a.pkg);
-        f.setFocusable(true);
-        f.setClickable(true);
-        f.setBackground(tileBackground(dp(10)));
-        f.setClipToOutline(true);
-        int pad = dp(3);
-        f.setPadding(pad, pad, pad, pad);
-
-        ImageView img = new ImageView(this);
-        img.setImageDrawable(a.art);
-        if (a.isBanner) {
-            img.setScaleType(ImageView.ScaleType.FIT_CENTER);
-            f.addView(img, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
-                    ViewGroup.LayoutParams.MATCH_PARENT));
-        } else {
-            // phone-style app: icon with its name underneath
-            img.setScaleType(ImageView.ScaleType.FIT_CENTER);
-            int s = big ? dp(64) : dp(40);
-            FrameLayout.LayoutParams ip = new FrameLayout.LayoutParams(s, s, Gravity.CENTER_HORIZONTAL | Gravity.TOP);
-            ip.topMargin = big ? dp(18) : dp(10);
-            f.addView(img, ip);
-            TextView name = text(a.label, big ? 15 : 12, Color.WHITE, false);
-            name.setSingleLine(true);
-            name.setEllipsize(TextUtils.TruncateAt.END);
-            name.setGravity(Gravity.CENTER);
-            FrameLayout.LayoutParams np = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
-                    ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM);
-            np.leftMargin = np.rightMargin = dp(6);
-            np.bottomMargin = big ? dp(14) : dp(8);
-            f.addView(name, np);
-        }
-
-        ViewGroup.MarginLayoutParams lp;
-        if (big) {
-            LinearLayout.LayoutParams l = new LinearLayout.LayoutParams(w, h);
-            l.rightMargin = dp(20);
-            lp = l;
-        } else {
-            GridLayout.LayoutParams g = new GridLayout.LayoutParams();
-            g.width = w;
-            g.height = h;
-            g.setMargins(0, 0, dp(SMALL_GAP), dp(SMALL_GAP));
-            lp = g;
-        }
-        f.setLayoutParams(lp);
-
-        f.setOnFocusChangeListener(new View.OnFocusChangeListener() {
-            @Override public void onFocusChange(View v, boolean has) {
-                v.animate().scaleX(has ? 1.1f : 1f).scaleY(has ? 1.1f : 1f)
-                        .translationZ(has ? dp(8) : 0).setDuration(120).start();
-            }
-        });
-        f.setOnClickListener(new View.OnClickListener() {
-            @Override public void onClick(View v) { launch(a); }
-        });
-        f.setOnLongClickListener(new View.OnLongClickListener() {
-            @Override public boolean onLongClick(View v) { showAppMenu(a, big); return true; }
-        });
-        f.setOnKeyListener(new View.OnKeyListener() {
-            @Override public boolean onKey(View v, int code, KeyEvent e) {
-                if (code == KeyEvent.KEYCODE_MENU && e.getAction() == KeyEvent.ACTION_UP) {
-                    showAppMenu(a, big);
-                    return true;
+        ui.post(() -> {
+            if (focusPkg != null) {
+                for (int i = 0; i < row.getChildCount(); i++) {
+                    View v = row.getChildAt(i);
+                    if (focusPkg.equals(v.getTag())) {
+                        v.requestFocus();
+                        if (focusPkg.equals(movingPkg)) startWiggle(v);
+                        return;
+                    }
                 }
-                return code == KeyEvent.KEYCODE_MENU;
             }
+            if (row.getChildCount() > 0) row.getChildAt(0).requestFocus();
         });
-        return f;
     }
 
-    // --------------------------------------------------------------- actions
-
-    private void launch(App a) {
-        try {
-            startActivity(a.launch);
-        } catch (Exception e) {
-            Intent i = getPackageManager().getLaunchIntentForPackage(a.pkg);
-            if (i == null) i = getPackageManager().getLeanbackLaunchIntentForPackage(a.pkg);
-            if (i != null) {
-                try { startActivity(i); return; } catch (Exception ignored) { }
-            }
-            Toast.makeText(this, "Couldn't open " + a.label, Toast.LENGTH_SHORT).show();
-        }
-    }
-
-    private void openSystemSettings() {
-        Intent[] tries = {
-                new Intent(Settings.ACTION_SETTINGS),
-                new Intent().setComponent(new ComponentName("com.amazon.tv.settings.v2",
-                        "com.amazon.tv.settings.v2.tv.MainSettingsActivity")),
-        };
-        for (Intent i : tries) {
-            try { startActivity(i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)); return; }
-            catch (Exception ignored) { }
-        }
-        Toast.makeText(this, "Settings not found", Toast.LENGTH_SHORT).show();
-    }
-
-    private void showAppMenu(final App a, final boolean inFavs) {
-        final List<String> favs = Prefs.favs(this);
-        favs.retainAll(apps.keySet());
-        final int idx = favs.indexOf(a.pkg);
-        final List<String> labels = new ArrayList<>();
-        final List<Runnable> actions = new ArrayList<>();
-
-        if (idx >= 0) {
-            if (idx > 0) {
-                labels.add("Move left");
-                actions.add(new Runnable() { @Override public void run() {
-                    Collections.swap(favs, idx, idx - 1); focusPkg = a.pkg; focusInFavs = true;
-                    Prefs.setFavs(MainActivity.this, favs); render(); } });
-            }
-            if (idx < favs.size() - 1) {
-                labels.add("Move right");
-                actions.add(new Runnable() { @Override public void run() {
-                    Collections.swap(favs, idx, idx + 1); focusPkg = a.pkg; focusInFavs = true;
-                    Prefs.setFavs(MainActivity.this, favs); render(); } });
-            }
-            labels.add("Remove from favourites");
-            actions.add(new Runnable() { @Override public void run() {
-                favs.remove(a.pkg); Prefs.setFavs(MainActivity.this, favs); render(); } });
-        } else {
-            labels.add("Add to favourites");
-            actions.add(new Runnable() { @Override public void run() {
-                favs.add(a.pkg); Prefs.setFavs(MainActivity.this, favs); render(); } });
-        }
-        if (!inFavs) {
-            labels.add("Hide from All apps");
-            actions.add(new Runnable() { @Override public void run() {
-                Set<String> h = Prefs.hidden(MainActivity.this); h.add(a.pkg);
-                Prefs.setHidden(MainActivity.this, h); render(); } });
-        }
-        labels.add("App info");
-        actions.add(new Runnable() { @Override public void run() {
-            try {
-                startActivity(new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
-                        Uri.parse("package:" + a.pkg)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
-            } catch (Exception e) {
-                Toast.makeText(MainActivity.this, "App info not available", Toast.LENGTH_SHORT).show();
-            } } });
-
-        new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
-                .setTitle(a.label)
-                .setItems(labels.toArray(new String[0]), new android.content.DialogInterface.OnClickListener() {
-                    @Override public void onClick(android.content.DialogInterface d, int which) {
-                        actions.get(which).run();
-                    }
-                })
-                .show();
-    }
-
-    private boolean watcherEnabledInSystem() {
-        String s = Settings.Secure.getString(getContentResolver(),
-                Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES);
-        return s != null && s.toLowerCase(Locale.ROOT).contains(getPackageName().toLowerCase(Locale.ROOT));
-    }
-
-    private void showLauncherMenu() {
-        final boolean on = Prefs.watcherOn(this);
-        final boolean sys = watcherEnabledInSystem();
-        String homeLine = "Home button opens TV Home: " + (on ? "On" : "Off")
-                + (sys ? "" : " (service not enabled)");
-        String[] items = {
-                homeLine,
-                "Show hidden apps again",
-                "Reset favourites",
-                "Open Amazon home screen",
-                "About (version " + versionName() + ")",
-        };
-        new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
-                .setTitle("TV Home")
-                .setItems(items, new android.content.DialogInterface.OnClickListener() {
-                    @Override public void onClick(android.content.DialogInterface d, int which) {
-                        switch (which) {
-                            case 0:
-                                Prefs.setWatcherOn(MainActivity.this, !on);
-                                if (!sys) openAccessibilitySettings();
-                                break;
-                            case 1:
-                                Prefs.setHidden(MainActivity.this, new java.util.HashSet<String>());
-                                render();
-                                break;
-                            case 2:
-                                List<String> def = new ArrayList<>();
-                                for (String p : Prefs.DEFAULT_FAVS) def.add(p);
-                                Prefs.setFavs(MainActivity.this, def);
-                                render();
-                                break;
-                            case 3:
-                                openAmazonHome();
-                                break;
-                            default:
-                                break;
-                        }
-                    }
-                })
-                .show();
-    }
-
-    private void openAccessibilitySettings() {
-        try {
-            startActivity(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
-        } catch (Exception ignored) { }
-    }
-
-    private void openAmazonHome() {
-        // Pause the takeover for a minute so Amazon's home can actually show.
-        Prefs.pauseWatcher(this, 60_000);
-        Intent i = getPackageManager().getLaunchIntentForPackage("com.amazon.tv.launcher");
-        if (i == null) i = getPackageManager().getLeanbackLaunchIntentForPackage("com.amazon.tv.launcher");
-        if (i == null) {
-            Toast.makeText(this, "Amazon home screen not found", Toast.LENGTH_SHORT).show();
-            Prefs.pauseWatcher(this, 0);
+    /** Update the top shelf and backdrop for the selected app. */
+    private void showShelf(AppRepo.App a) {
+        preview.removeAllViews();
+        if (a == null) {
+            title.setText("TV Home");
+            hint.setText("");
+            setBackdrop(new ColorDrawable(0xFF101014));
             return;
         }
-        startActivity(i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+        preview.addView(Tiles.card(this, a, dp(400), dp(225), dp(16)), match());
+        title.setText(a.label);
+        hint.setText(movingPkg != null
+                ? "Use left and right to move it, then press Select."
+                : "Press and hold to move or remove");
+
+        Bitmap blur = blurCache.get(a.pkg);
+        if (blur == null) {
+            blur = Tiles.blur(a.isBanner ? a.art : new ColorDrawable(a.tint));
+            blurCache.put(a.pkg, blur);
+        }
+        setBackdrop(new BitmapDrawable(getResources(), blur));
     }
 
-    private String versionName() {
-        try { return getPackageManager().getPackageInfo(getPackageName(), 0).versionName; }
-        catch (Exception e) { return "?"; }
+    private void setBackdrop(Drawable next) {
+        TransitionDrawable t = new TransitionDrawable(new Drawable[]{backdropNow, next});
+        t.setCrossFadeEnabled(true);
+        backdrop.setImageDrawable(t);
+        t.startTransition(300);
+        backdropNow = next;
+    }
+
+    // ------------------------------------------------------------ tile events
+
+    @Override public void onFocus(AppRepo.App a, View tile) {
+        showShelf(a);
+        // keep the selected icon comfortably on screen
+        int x = tile.getLeft() - dp(ICON_W + ICON_GAP);
+        rowScroll.smoothScrollTo(Math.max(0, x), 0);
+    }
+
+    @Override public void onOpen(AppRepo.App a, View tile) {
+        if (movingPkg != null) { stopMoving(); return; }
+        AppRepo.launch(this, a);
+    }
+
+    @Override public void onHold(AppRepo.App a, View tile) {
+        startMoving(a, tile);
+        ignoreNextUp = true;
+    }
+
+    private void startMoving(AppRepo.App a, View tile) {
+        if (movingPkg != null) { stopMoving(); return; }
+        // Apple TV: hold to make the icon wiggle, then move it
+        movingPkg = a.pkg;
+        startWiggle(tile);
+        showShelf(a);
+    }
+
+    @Override public void onMenu(AppRepo.App a, View tile) {
+        String[] items = {"Move", "Remove from Home", "App info"};
+        new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+                .setTitle(a.label)
+                .setItems(items, (d, which) -> {
+                    if (which == 0) startMoving(a, tile);
+                    else if (which == 1) {
+                        List<String> home = AppRepo.homeRow(this, apps);
+                        home.remove(a.pkg);
+                        Prefs.setFavs(this, home);
+                        focusPkg = null;
+                        renderRow();
+                    } else AppRepo.appInfo(this, a);
+                })
+                .show();
+    }
+
+    // ---------------------------------------------------------------- moving
+
+    @Override
+    public boolean dispatchKeyEvent(KeyEvent e) {
+        if (movingPkg == null) return super.dispatchKeyEvent(e);
+        int k = e.getKeyCode();
+        if (k == KeyEvent.KEYCODE_DPAD_LEFT || k == KeyEvent.KEYCODE_DPAD_RIGHT) {
+            if (e.getAction() == KeyEvent.ACTION_DOWN) shift(k == KeyEvent.KEYCODE_DPAD_LEFT ? -1 : 1);
+            return true;
+        }
+        if (k == KeyEvent.KEYCODE_DPAD_UP || k == KeyEvent.KEYCODE_DPAD_DOWN) return true;
+        if (k == KeyEvent.KEYCODE_DPAD_CENTER || k == KeyEvent.KEYCODE_ENTER || k == KeyEvent.KEYCODE_BACK) {
+            if (e.getAction() == KeyEvent.ACTION_UP) {
+                if (ignoreNextUp && k != KeyEvent.KEYCODE_BACK) ignoreNextUp = false;
+                else stopMoving();
+            }
+            return true;
+        }
+        return super.dispatchKeyEvent(e);
+    }
+
+    private void shift(int by) {
+        List<String> home = AppRepo.homeRow(this, apps);
+        int i = home.indexOf(movingPkg);
+        int j = i + by;
+        if (i < 0 || j < 0 || j >= home.size()) return;
+        Collections.swap(home, i, j);
+        Prefs.setFavs(this, home);
+        focusPkg = movingPkg;
+        stopWiggle();
+        renderRow();
+    }
+
+    private void startWiggle(View v) {
+        stopWiggle();
+        wiggle = ObjectAnimator.ofFloat(v, "rotation", -1.6f, 1.6f);
+        wiggle.setDuration(130);
+        wiggle.setRepeatMode(ValueAnimator.REVERSE);
+        wiggle.setRepeatCount(ValueAnimator.INFINITE);
+        wiggle.start();
+    }
+
+    private void stopWiggle() {
+        if (wiggle != null) {
+            wiggle.cancel();
+            Object t = wiggle.getTarget();
+            if (t instanceof View) ((View) t).setRotation(0);
+            wiggle = null;
+        }
+    }
+
+    private void stopMoving() {
+        ignoreNextUp = false;
+        stopWiggle();
+        String was = movingPkg;
+        movingPkg = null;
+        if (was != null && apps.containsKey(was)) showShelf(apps.get(was));
     }
 }

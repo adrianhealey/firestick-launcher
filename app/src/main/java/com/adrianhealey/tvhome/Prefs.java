@@ -47,6 +47,17 @@ final class Prefs {
         sp(c).edit().putString("favs", TextUtils.join(",", favs)).apply();
     }
 
+    // Amazon apps that stay visible; every other com.amazon.* app starts hidden.
+    static final String[] AMAZON_KEEP = {
+            "com.amazon.avod",              // Prime Video
+            "com.amazon.firetv.youtube",
+            "com.amazon.venezia",           // Appstore
+            "com.amazon.cloud9",            // Silk browser
+            "com.amazon.tv.settings.v2",
+    };
+
+    static boolean hasHidden(Context c) { return sp(c).contains("hidden"); }
+
     static Set<String> hidden(Context c) {
         return new HashSet<>(sp(c).getStringSet("hidden", new HashSet<String>()));
     }

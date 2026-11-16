@@ -10,7 +10,6 @@ import android.os.Looper;
 import android.text.TextUtils;
 import android.util.Log;
 import android.util.TypedValue;
-import android.view.ViewGroup;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
@@ -26,19 +25,21 @@ import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Calendar;
 import java.util.Collections;
+import java.util.Date;
 import java.util.List;
 import java.util.Locale;
 
 /**
- * Today's events from the Home Assistant family calendar. Uses the long-lived
- * access token the Cameras app already stores on this device (shared prefs),
- * calling Home Assistant's REST API over the public Tailscale funnel.
+ * The next 7 days of events from the Home Assistant family calendar. Uses the
+ * long-lived access token the Cameras app already stores on this device, calling
+ * Home Assistant's REST API over the public Tailscale funnel.
  */
 final class CalendarPanel extends LinearLayout {
 
     static final String BASE = "https://homeassistant.tail0892f8.ts.net";
     static final String ENTITY = "calendar.family_2_2";
-    private static final int MAX_ROWS = 3;
+    private static final int DAYS = 7;
+    private static final int MAX_ROWS = 4;
     private static final long REFRESH_MS = 30 * 60 * 1000L;
     private static final String TAG = "tvhome-cal";
 
@@ -56,7 +57,7 @@ final class CalendarPanel extends LinearLayout {
         setBackground(bg);
 
         TextView label = text(11, 0x99FFFFFF, "sans-serif-medium");
-        label.setText("📅  TODAY");
+        label.setText("📅  NEXT 7 DAYS");
         label.setLetterSpacing(0.04f);
         addView(label);
 
@@ -107,7 +108,7 @@ final class CalendarPanel extends LinearLayout {
         if (token == null || token.isEmpty()) { Log.w(TAG, "no token"); return new JSONArray(); }
         Calendar s = Calendar.getInstance();
         s.set(Calendar.HOUR_OF_DAY, 0); s.set(Calendar.MINUTE, 0); s.set(Calendar.SECOND, 0); s.set(Calendar.MILLISECOND, 0);
-        Calendar e = (Calendar) s.clone(); e.add(Calendar.DAY_OF_MONTH, 1);
+        Calendar e = (Calendar) s.clone(); e.add(Calendar.DAY_OF_MONTH, DAYS);
         String url = BASE + "/api/calendars/" + ENTITY
                 + "?start=" + URLEncoder.encode(iso(s), "UTF-8")
                 + "&end=" + URLEncoder.encode(iso(e), "UTF-8");
@@ -134,11 +135,11 @@ final class CalendarPanel extends LinearLayout {
         List<JSONObject> evs = new ArrayList<>();
         for (int i = 0; i < a.length(); i++) { JSONObject o = a.optJSONObject(i); if (o != null) evs.add(o); }
         Collections.sort(evs, (x, y) -> startKey(x).compareTo(startKey(y)));
-        if (evs.isEmpty()) { list.addView(line("", "Nothing today", true)); return; }
+        if (evs.isEmpty()) { list.addView(line("", "Nothing in the next 7 days", true)); return; }
         int shown = Math.min(evs.size(), MAX_ROWS);
         for (int i = 0; i < shown; i++) {
             JSONObject o = evs.get(i);
-            list.addView(line(when(o), o.optString("summary", "(busy)"), false));
+            list.addView(line(dayLabel(o), detail(o), false));
         }
         if (evs.size() > shown) list.addView(line("", "+" + (evs.size() - shown) + " more", true));
     }
@@ -149,21 +150,43 @@ final class CalendarPanel extends LinearLayout {
         return s.optString("dateTime", s.optString("date", ""));
     }
 
-    private static String when(JSONObject o) {
+    private static String datePart(JSONObject o) {
         JSONObject s = o.optJSONObject("start");
         if (s == null) return "";
         String dt = s.optString("dateTime", "");
-        if (dt.length() >= 16) return dt.substring(11, 16);   // HH:mm
-        return "All day";
+        if (dt.length() >= 10) return dt.substring(0, 10);
+        return s.optString("date", "");
     }
 
-    private LinearLayout line(String time, String title, boolean dim) {
+    private static String dayLabel(JSONObject o) {
+        String d = datePart(o);
+        if (d.length() < 10) return "";
+        String today = new SimpleDateFormat("yyyy-MM-dd", Locale.UK).format(new Date());
+        if (d.compareTo(today) <= 0) return "Today";
+        try {
+            Date dt = new SimpleDateFormat("yyyy-MM-dd", Locale.UK).parse(d);
+            return new SimpleDateFormat("EEE", Locale.UK).format(dt);   // Mon, Tue...
+        } catch (Exception e) {
+            return "";
+        }
+    }
+
+    /** Time + title for a timed event, or just the title for an all-day one. */
+    private static String detail(JSONObject o) {
+        JSONObject s = o.optJSONObject("start");
+        String summary = o.optString("summary", "(busy)");
+        String dt = s == null ? "" : s.optString("dateTime", "");
+        if (dt.length() >= 16) return dt.substring(11, 16) + "  " + summary;   // HH:mm
+        return summary;
+    }
+
+    private LinearLayout line(String day, String title, boolean dim) {
         LinearLayout r = new LinearLayout(getContext());
         r.setOrientation(HORIZONTAL);
         r.setPadding(0, dp(2), 0, dp(2));
         TextView t = text(13, 0xDDEBEBF5, "sans-serif-medium");
-        t.setText(time);
-        r.addView(t, new LayoutParams(dp(52), LayoutParams.WRAP_CONTENT));
+        t.setText(day);
+        r.addView(t, new LayoutParams(dp(50), LayoutParams.WRAP_CONTENT));
         TextView n = text(13, dim ? 0x99FFFFFF : Color.WHITE, dim ? "sans-serif" : "sans-serif-medium");
         n.setText(title);
         n.setSingleLine(true);

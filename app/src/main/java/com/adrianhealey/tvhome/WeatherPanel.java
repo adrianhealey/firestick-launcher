@@ -36,8 +36,8 @@ import java.util.Locale;
 final class WeatherPanel extends LinearLayout {
 
     // St Helens, Merseyside
-    static final String PLACE = "St Helens";
-    static final double LAT = 53.4539, LON = -2.7361;
+    static final String PLACE = "Shays Farm";
+    static final double LAT = 53.20127, LON = -2.60761;
     private static final long REFRESH_MS = 30 * 60 * 1000L;
 
     private final Handler ui = new Handler(Looper.getMainLooper());

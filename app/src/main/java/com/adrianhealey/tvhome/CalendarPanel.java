@@ -39,7 +39,7 @@ final class CalendarPanel extends LinearLayout {
     static final String BASE = "http://192.168.0.219:8123";
     static final String ENTITY = "calendar.family_2_2";
     private static final int DAYS = 7;
-    private static final int MAX_ROWS = 3;
+    private static final int MAX_ROWS = 7;
     private static final long REFRESH_MS = 30 * 60 * 1000L;
     private static final String TAG = "tvhome-cal";
 

@@ -56,7 +56,7 @@ final class CalendarPanel extends LinearLayout {
         bg.setStroke(dp(1), 0x26FFFFFF);
         setBackground(bg);
 
-        TextView label = text(11, 0x99FFFFFF, "sans-serif-medium");
+        TextView label = text(13, 0x99FFFFFF, "sans-serif-medium");
         label.setText("📅  NEXT 7 DAYS");
         label.setLetterSpacing(0.04f);
         addView(label);
@@ -184,10 +184,10 @@ final class CalendarPanel extends LinearLayout {
         LinearLayout r = new LinearLayout(getContext());
         r.setOrientation(HORIZONTAL);
         r.setPadding(0, dp(1), 0, dp(1));
-        TextView t = text(13, 0xDDEBEBF5, "sans-serif-medium");
+        TextView t = text(17, 0xDDEBEBF5, "sans-serif-medium");
         t.setText(day);
-        r.addView(t, new LayoutParams(dp(50), LayoutParams.WRAP_CONTENT));
-        TextView n = text(13, dim ? 0x99FFFFFF : Color.WHITE, dim ? "sans-serif" : "sans-serif-medium");
+        r.addView(t, new LayoutParams(dp(54), LayoutParams.WRAP_CONTENT));
+        TextView n = text(17, dim ? 0x99FFFFFF : Color.WHITE, dim ? "sans-serif" : "sans-serif-medium");
         n.setText(title);
         n.setSingleLine(true);
         n.setEllipsize(TextUtils.TruncateAt.END);

@@ -39,7 +39,7 @@ final class CalendarPanel extends LinearLayout {
     static final String BASE = "http://192.168.0.219:8123";
     static final String ENTITY = "calendar.family_2_2";
     private static final int DAYS = 7;
-    private static final int MAX_ROWS = 4;
+    private static final int MAX_ROWS = 3;
     private static final long REFRESH_MS = 30 * 60 * 1000L;
     private static final String TAG = "tvhome-cal";
 
@@ -49,7 +49,7 @@ final class CalendarPanel extends LinearLayout {
     CalendarPanel(Context c) {
         super(c);
         setOrientation(VERTICAL);
-        setPadding(dp(14), dp(10), dp(14), dp(10));
+        setPadding(dp(14), dp(8), dp(14), dp(8));
         GradientDrawable bg = new GradientDrawable();
         bg.setCornerRadius(dp(16));
         bg.setColor(0x59101826);
@@ -183,7 +183,7 @@ final class CalendarPanel extends LinearLayout {
     private LinearLayout line(String day, String title, boolean dim) {
         LinearLayout r = new LinearLayout(getContext());
         r.setOrientation(HORIZONTAL);
-        r.setPadding(0, dp(2), 0, dp(2));
+        r.setPadding(0, dp(1), 0, dp(1));
         TextView t = text(13, 0xDDEBEBF5, "sans-serif-medium");
         t.setText(day);
         r.addView(t, new LayoutParams(dp(50), LayoutParams.WRAP_CONTENT));

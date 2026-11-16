@@ -36,7 +36,7 @@ import java.util.Locale;
  */
 final class CalendarPanel extends LinearLayout {
 
-    static final String BASE = "https://homeassistant.tail0892f8.ts.net";
+    static final String BASE = "http://192.168.0.219:8123";
     static final String ENTITY = "calendar.family_2_2";
     private static final int DAYS = 7;
     private static final int MAX_ROWS = 4;

@@ -163,41 +163,44 @@ public class MainActivity extends Activity implements Tiles.Listener {
         top.addView(clock);
         col.addView(top);
 
-        // top shelf: big preview of the selected app
+        // top shelf: preview of the selected app with its name underneath,
+        // and the weather + 7-day calendar side by side on the right.
         LinearLayout shelf = new LinearLayout(this);
         shelf.setOrientation(LinearLayout.HORIZONTAL);
         shelf.setGravity(Gravity.CENTER_VERTICAL);
         shelf.setClipChildren(false);
         preview = new FrameLayout(this);
         preview.setElevation(dp(16));
+        title = new TextView(this);
+        title.setTextSize(TypedValue.COMPLEX_UNIT_SP, 22);
+        title.setMaxLines(1);
+        title.setTextColor(Color.WHITE);
+        title.setGravity(Gravity.CENTER_HORIZONTAL);
+        title.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+        title.setShadowLayer(dp(6), 0, dp(2), 0x80000000);
         LinearLayout leftCol = new LinearLayout(this);
         leftCol.setOrientation(LinearLayout.VERTICAL);
         leftCol.setClipChildren(false);
+        leftCol.setGravity(Gravity.CENTER_HORIZONTAL);
         leftCol.addView(preview, new LinearLayout.LayoutParams(dp(PREVIEW_W), dp(PREVIEW_H)));
-        calendar = new CalendarPanel(this);
-        LinearLayout.LayoutParams calLp = new LinearLayout.LayoutParams(dp(PREVIEW_W), ViewGroup.LayoutParams.WRAP_CONTENT);
-        calLp.topMargin = dp(12);
-        leftCol.addView(calendar, calLp);
+        LinearLayout.LayoutParams titleLp = new LinearLayout.LayoutParams(dp(PREVIEW_W), ViewGroup.LayoutParams.WRAP_CONTENT);
+        titleLp.topMargin = dp(12);
+        leftCol.addView(title, titleLp);
         shelf.addView(leftCol, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-
-        LinearLayout words = new LinearLayout(this);
-        words.setOrientation(LinearLayout.VERTICAL);
-        words.setPadding(dp(28), 0, dp(20), 0);
-        title = new TextView(this);
-        title.setTextSize(TypedValue.COMPLEX_UNIT_SP, 30);
-        title.setMaxLines(2);
-        title.setTextColor(Color.WHITE);
-        title.setTypeface(Typeface.create("sans-serif", Typeface.BOLD));
-        title.setShadowLayer(dp(8), 0, dp(2), 0x80000000);
-        hint = new TextView(this);
-        hint.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16);
-        hint.setTextColor(0xCCEBEBF5);
-        hint.setPadding(0, dp(8), 0, 0);
-        words.addView(title);
-        words.addView(hint);
-        shelf.addView(words, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+        // flexible gap pushes the weather + calendar group to the right
+        View gap = new View(this);
+        shelf.addView(gap, new LinearLayout.LayoutParams(0, 1, 1f));
+        // weather and the 7-day family calendar, matched height, side by side
+        LinearLayout rightGroup = new LinearLayout(this);
+        rightGroup.setOrientation(LinearLayout.HORIZONTAL);
+        rightGroup.setClipChildren(false);
         weather = new WeatherPanel(this);
-        shelf.addView(weather, new LinearLayout.LayoutParams(dp(330), ViewGroup.LayoutParams.WRAP_CONTENT));
+        rightGroup.addView(weather, new LinearLayout.LayoutParams(dp(330), ViewGroup.LayoutParams.WRAP_CONTENT));
+        calendar = new CalendarPanel(this);
+        LinearLayout.LayoutParams calLp = new LinearLayout.LayoutParams(dp(210), ViewGroup.LayoutParams.MATCH_PARENT);
+        calLp.leftMargin = dp(12);
+        rightGroup.addView(calendar, calLp);
+        shelf.addView(rightGroup, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         col.addView(shelf, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1));
 
         // the home row
@@ -273,15 +276,11 @@ public class MainActivity extends Activity implements Tiles.Listener {
         preview.removeAllViews();
         if (a == null) {
             title.setText("TV Home");
-            hint.setText("");
             setBackdrop(new ColorDrawable(0xFF101014));
             return;
         }
         preview.addView(Tiles.card(this, a, dp(PREVIEW_W), dp(PREVIEW_H), dp(16)), match());
         title.setText(a.label);
-        hint.setText(movingPkg != null
-                ? "Use left and right to move it, then press Select."
-                : "Press and hold to move or remove");
 
         Bitmap blur = blurCache.get(a.pkg);
         if (blur == null) {

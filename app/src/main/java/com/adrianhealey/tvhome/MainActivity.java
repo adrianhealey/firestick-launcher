@@ -7,6 +7,11 @@ import android.app.AlertDialog;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
+import android.net.ConnectivityManager;
+import android.net.Network;
+import android.net.NetworkCapabilities;
+import android.graphics.PorterDuff;
+import android.widget.Toast;
 import android.content.IntentFilter;
 import android.graphics.Bitmap;
 import android.graphics.Color;
@@ -59,6 +64,9 @@ public class MainActivity extends Activity implements Tiles.Listener {
     private TextView emptyRow;
     private WeatherPanel weather;
     private CalendarPanel calendar;
+    private ImageView vpnIcon;
+    private FrameLayout vpnBtn;
+    private int vpnColor = 0xFFFF3B30;   // red until the VPN is confirmed up
 
     private String focusPkg;            // tile to re-focus after a rebuild
     private String movingPkg;           // app being moved, or null
@@ -97,6 +105,15 @@ public class MainActivity extends Activity implements Tiles.Listener {
         if (Prefs.consumeChanged(this)) { apps = AppRepo.load(this); renderRow(); }
         if (weather != null) weather.refreshIfStale();
         if (calendar != null) calendar.refreshIfStale();
+        updateVpnStatus();
+        ui.removeCallbacks(vpnPoll);
+        ui.post(vpnPoll);
+    }
+
+    @Override
+    protected void onPause() {
+        super.onPause();
+        ui.removeCallbacks(vpnPoll);
     }
 
     @Override
@@ -148,6 +165,31 @@ public class MainActivity extends Activity implements Tiles.Listener {
         top.setGravity(Gravity.CENTER_VERTICAL);
         top.setClipChildren(false);
         top.addView(new View(this), new LinearLayout.LayoutParams(0, 1, 1));
+        vpnBtn = new FrameLayout(this);
+        vpnBtn.setFocusable(true);
+        vpnBtn.setClickable(true);
+        vpnBtn.setContentDescription("VPN");
+        final GradientDrawable vpnBg = new GradientDrawable();
+        vpnBg.setShape(GradientDrawable.OVAL);
+        vpnBg.setColor(0x40FFFFFF);
+        vpnBtn.setBackground(vpnBg);
+        vpnBtn.setElevation(dp(2));
+        vpnIcon = new ImageView(this);
+        vpnIcon.setImageResource(R.drawable.ic_vpn);
+        vpnIcon.setColorFilter(vpnColor, PorterDuff.Mode.SRC_IN);
+        vpnBtn.addView(vpnIcon, new FrameLayout.LayoutParams(dp(24), dp(24), Gravity.CENTER));
+        vpnBtn.setOnFocusChangeListener((v, has) -> {
+            vpnBg.setColor(has ? Color.WHITE : 0x40FFFFFF);
+            vpnIcon.setColorFilter(has ? 0xFF1C1C1E : vpnColor, PorterDuff.Mode.SRC_IN);
+            v.animate().scaleX(has ? 1.15f : 1f).scaleY(has ? 1.15f : 1f).setDuration(120).start();
+        });
+        vpnBtn.setOnClickListener(v -> {
+            Intent vi = getPackageManager().getLaunchIntentForPackage("com.ixolit.ipvanish");
+            if (vi != null) { vi.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK); startActivity(vi); }
+            else Toast.makeText(this, "IPVanish is not installed", Toast.LENGTH_SHORT).show();
+        });
+        top.addView(vpnBtn, new LinearLayout.LayoutParams(dp(52), dp(52)));
+        top.addView(new View(this), new LinearLayout.LayoutParams(dp(16), 1));
         top.addView(Tiles.roundButton(this, R.drawable.ic_apps, "All apps",
                 v -> startActivity(new Intent(this, AppsActivity.class))), new LinearLayout.LayoutParams(dp(52), dp(52)));
         top.addView(new View(this), new LinearLayout.LayoutParams(dp(16), 1));
@@ -163,44 +205,19 @@ public class MainActivity extends Activity implements Tiles.Listener {
         top.addView(clock);
         col.addView(top);
 
-        // top shelf: preview of the selected app with its name underneath,
-        // and the weather + 7-day calendar side by side on the right.
+        // shelf: weather on the left, the wide 7-day family calendar on the right
         LinearLayout shelf = new LinearLayout(this);
         shelf.setOrientation(LinearLayout.HORIZONTAL);
         shelf.setGravity(Gravity.CENTER_VERTICAL);
         shelf.setClipChildren(false);
-        preview = new FrameLayout(this);
-        preview.setElevation(dp(16));
-        title = new TextView(this);
-        title.setTextSize(TypedValue.COMPLEX_UNIT_SP, 22);
-        title.setMaxLines(1);
-        title.setTextColor(Color.WHITE);
-        title.setGravity(Gravity.CENTER_HORIZONTAL);
-        title.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
-        title.setShadowLayer(dp(6), 0, dp(2), 0x80000000);
-        LinearLayout leftCol = new LinearLayout(this);
-        leftCol.setOrientation(LinearLayout.VERTICAL);
-        leftCol.setClipChildren(false);
-        leftCol.setGravity(Gravity.CENTER_HORIZONTAL);
-        leftCol.addView(preview, new LinearLayout.LayoutParams(dp(PREVIEW_W), dp(PREVIEW_H)));
-        LinearLayout.LayoutParams titleLp = new LinearLayout.LayoutParams(dp(PREVIEW_W), ViewGroup.LayoutParams.WRAP_CONTENT);
-        titleLp.topMargin = dp(12);
-        leftCol.addView(title, titleLp);
-        shelf.addView(leftCol, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-        // flexible gap pushes the weather + calendar group to the right
+        weather = new WeatherPanel(this);
+        shelf.addView(weather, new LinearLayout.LayoutParams(dp(330), ViewGroup.LayoutParams.WRAP_CONTENT));
+        // flexible gap between the two boxes
         View gap = new View(this);
         shelf.addView(gap, new LinearLayout.LayoutParams(0, 1, 1f));
-        // weather and the 7-day family calendar, matched height, side by side
-        LinearLayout rightGroup = new LinearLayout(this);
-        rightGroup.setOrientation(LinearLayout.HORIZONTAL);
-        rightGroup.setClipChildren(false);
-        weather = new WeatherPanel(this);
-        rightGroup.addView(weather, new LinearLayout.LayoutParams(dp(330), ViewGroup.LayoutParams.WRAP_CONTENT));
         calendar = new CalendarPanel(this);
-        LinearLayout.LayoutParams calLp = new LinearLayout.LayoutParams(dp(210), ViewGroup.LayoutParams.MATCH_PARENT);
-        calLp.leftMargin = dp(12);
-        rightGroup.addView(calendar, calLp);
-        shelf.addView(rightGroup, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        LinearLayout.LayoutParams calLp = new LinearLayout.LayoutParams(dp(430), ViewGroup.LayoutParams.MATCH_PARENT);
+        shelf.addView(calendar, calLp);
         col.addView(shelf, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1));
 
         // the home row
@@ -272,15 +289,38 @@ public class MainActivity extends Activity implements Tiles.Listener {
     }
 
     /** Update the top shelf and backdrop for the selected app. */
+    // ---- VPN status: green when a VPN (IPVanish) is up, red when not ----
+    private final Runnable vpnPoll = new Runnable() {
+        @Override public void run() {
+            updateVpnStatus();
+            ui.postDelayed(this, 5000);
+        }
+    };
+
+    private boolean vpnConnected() {
+        ConnectivityManager cm = (ConnectivityManager) getSystemService(CONNECTIVITY_SERVICE);
+        if (cm == null) return false;
+        try {
+            for (Network n : cm.getAllNetworks()) {
+                NetworkCapabilities nc = cm.getNetworkCapabilities(n);
+                if (nc != null && nc.hasTransport(NetworkCapabilities.TRANSPORT_VPN)) return true;
+            }
+        } catch (Exception ignored) { }
+        return false;
+    }
+
+    private void updateVpnStatus() {
+        vpnColor = vpnConnected() ? 0xFF34C759 : 0xFFFF3B30;
+        if (vpnIcon != null && vpnBtn != null && !vpnBtn.isFocused()) {
+            vpnIcon.setColorFilter(vpnColor, PorterDuff.Mode.SRC_IN);
+        }
+    }
+
     private void showShelf(AppRepo.App a) {
-        preview.removeAllViews();
         if (a == null) {
-            title.setText("TV Home");
             setBackdrop(new ColorDrawable(0xFF101014));
             return;
         }
-        preview.addView(Tiles.card(this, a, dp(PREVIEW_W), dp(PREVIEW_H), dp(16)), match());
-        title.setText(a.label);
 
         Bitmap blur = blurCache.get(a.pkg);
         if (blur == null) {

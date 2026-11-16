@@ -44,7 +44,7 @@ public class MainActivity extends Activity implements Tiles.Listener {
 
     // Sizes in dp. Five icons fit across a 1080p screen.
     static final int SIDE = 48, ICON_W = 156, ICON_H = 94, ICON_GAP = 20;
-    static final int PREVIEW_W = 302, PREVIEW_H = 170;
+    static final int PREVIEW_W = 302, PREVIEW_H = 152;
 
     private final Handler ui = new Handler(Looper.getMainLooper());
     private final Map<String, Bitmap> blurCache = new HashMap<>();

@@ -44,7 +44,7 @@ public class MainActivity extends Activity implements Tiles.Listener {
 
     // Sizes in dp. Five icons fit across a 1080p screen.
     static final int SIDE = 48, ICON_W = 156, ICON_H = 94, ICON_GAP = 20;
-    static final int PREVIEW_W = 336, PREVIEW_H = 189;
+    static final int PREVIEW_W = 302, PREVIEW_H = 170;
 
     private final Handler ui = new Handler(Looper.getMainLooper());
     private final Map<String, Bitmap> blurCache = new HashMap<>();
@@ -58,6 +58,7 @@ public class MainActivity extends Activity implements Tiles.Listener {
     private HorizontalScrollView rowScroll;
     private TextView emptyRow;
     private WeatherPanel weather;
+    private CalendarPanel calendar;
 
     private String focusPkg;            // tile to re-focus after a rebuild
     private String movingPkg;           // app being moved, or null
@@ -95,6 +96,7 @@ public class MainActivity extends Activity implements Tiles.Listener {
         // The Apps screen may have changed the home row.
         if (Prefs.consumeChanged(this)) { apps = AppRepo.load(this); renderRow(); }
         if (weather != null) weather.refreshIfStale();
+        if (calendar != null) calendar.refreshIfStale();
     }
 
     @Override
@@ -168,7 +170,15 @@ public class MainActivity extends Activity implements Tiles.Listener {
         shelf.setClipChildren(false);
         preview = new FrameLayout(this);
         preview.setElevation(dp(16));
-        shelf.addView(preview, new LinearLayout.LayoutParams(dp(PREVIEW_W), dp(PREVIEW_H)));
+        LinearLayout leftCol = new LinearLayout(this);
+        leftCol.setOrientation(LinearLayout.VERTICAL);
+        leftCol.setClipChildren(false);
+        leftCol.addView(preview, new LinearLayout.LayoutParams(dp(PREVIEW_W), dp(PREVIEW_H)));
+        calendar = new CalendarPanel(this);
+        LinearLayout.LayoutParams calLp = new LinearLayout.LayoutParams(dp(PREVIEW_W), ViewGroup.LayoutParams.WRAP_CONTENT);
+        calLp.topMargin = dp(12);
+        leftCol.addView(calendar, calLp);
+        shelf.addView(leftCol, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
         LinearLayout words = new LinearLayout(this);
         words.setOrientation(LinearLayout.VERTICAL);

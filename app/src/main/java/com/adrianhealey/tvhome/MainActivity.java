@@ -170,12 +170,14 @@ public class MainActivity extends Activity implements Tiles.Listener {
         vpnBtn.setClickable(true);
         vpnBtn.setContentDescription("VPN");
         final GradientDrawable vpnBg = new GradientDrawable();
-        vpnBg.setShape(GradientDrawable.OVAL);
+        vpnBg.setShape(GradientDrawable.RECTANGLE);
+        vpnBg.setCornerRadius(dp(26));
         vpnBg.setColor(0x40FFFFFF);
         vpnBtn.setBackground(vpnBg);
         vpnBtn.setElevation(dp(2));
+        vpnBtn.setPadding(dp(16), 0, dp(16), 0);
         vpnLabel = new TextView(this);
-        vpnLabel.setText("VPN");
+        vpnLabel.setText("VPN OFF");
         vpnLabel.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
         vpnLabel.setTypeface(Typeface.create("sans-serif-medium", Typeface.BOLD));
         vpnLabel.setTextColor(vpnColor);
@@ -190,7 +192,7 @@ public class MainActivity extends Activity implements Tiles.Listener {
             if (vi != null) { vi.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK); startActivity(vi); }
             else Toast.makeText(this, "IPVanish is not installed", Toast.LENGTH_SHORT).show();
         });
-        top.addView(vpnBtn, new LinearLayout.LayoutParams(dp(52), dp(52)));
+        top.addView(vpnBtn, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(52)));
         top.addView(new View(this), new LinearLayout.LayoutParams(dp(16), 1));
         top.addView(Tiles.roundButton(this, R.drawable.ic_apps, "All apps",
                 v -> startActivity(new Intent(this, AppsActivity.class))), new LinearLayout.LayoutParams(dp(52), dp(52)));
@@ -312,9 +314,11 @@ public class MainActivity extends Activity implements Tiles.Listener {
     }
 
     private void updateVpnStatus() {
-        vpnColor = vpnConnected() ? 0xFF34C759 : 0xFFFF3B30;
-        if (vpnLabel != null && vpnBtn != null && !vpnBtn.isFocused()) {
-            vpnLabel.setTextColor(vpnColor);
+        boolean on = vpnConnected();
+        vpnColor = on ? 0xFF34C759 : 0xFFFF3B30;
+        if (vpnLabel != null) {
+            vpnLabel.setText(on ? "VPN ON" : "VPN OFF");
+            if (vpnBtn != null && !vpnBtn.isFocused()) vpnLabel.setTextColor(vpnColor);
         }
     }
 

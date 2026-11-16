@@ -64,7 +64,7 @@ public class MainActivity extends Activity implements Tiles.Listener {
     private TextView emptyRow;
     private WeatherPanel weather;
     private CalendarPanel calendar;
-    private ImageView vpnIcon;
+    private TextView vpnLabel;
     private FrameLayout vpnBtn;
     private int vpnColor = 0xFFFF3B30;   // red until the VPN is confirmed up
 
@@ -174,13 +174,15 @@ public class MainActivity extends Activity implements Tiles.Listener {
         vpnBg.setColor(0x40FFFFFF);
         vpnBtn.setBackground(vpnBg);
         vpnBtn.setElevation(dp(2));
-        vpnIcon = new ImageView(this);
-        vpnIcon.setImageResource(R.drawable.ic_vpn);
-        vpnIcon.setColorFilter(vpnColor, PorterDuff.Mode.SRC_IN);
-        vpnBtn.addView(vpnIcon, new FrameLayout.LayoutParams(dp(24), dp(24), Gravity.CENTER));
+        vpnLabel = new TextView(this);
+        vpnLabel.setText("VPN");
+        vpnLabel.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
+        vpnLabel.setTypeface(Typeface.create("sans-serif-medium", Typeface.BOLD));
+        vpnLabel.setTextColor(vpnColor);
+        vpnBtn.addView(vpnLabel, new FrameLayout.LayoutParams(FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.CENTER));
         vpnBtn.setOnFocusChangeListener((v, has) -> {
             vpnBg.setColor(has ? Color.WHITE : 0x40FFFFFF);
-            vpnIcon.setColorFilter(has ? 0xFF1C1C1E : vpnColor, PorterDuff.Mode.SRC_IN);
+            vpnLabel.setTextColor(has ? 0xFF1C1C1E : vpnColor);
             v.animate().scaleX(has ? 1.15f : 1f).scaleY(has ? 1.15f : 1f).setDuration(120).start();
         });
         vpnBtn.setOnClickListener(v -> {
@@ -216,7 +218,7 @@ public class MainActivity extends Activity implements Tiles.Listener {
         View gap = new View(this);
         shelf.addView(gap, new LinearLayout.LayoutParams(0, 1, 1f));
         calendar = new CalendarPanel(this);
-        LinearLayout.LayoutParams calLp = new LinearLayout.LayoutParams(dp(430), ViewGroup.LayoutParams.MATCH_PARENT);
+        LinearLayout.LayoutParams calLp = new LinearLayout.LayoutParams(dp(430), dp(210));
         shelf.addView(calendar, calLp);
         col.addView(shelf, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1));
 
@@ -311,8 +313,8 @@ public class MainActivity extends Activity implements Tiles.Listener {
 
     private void updateVpnStatus() {
         vpnColor = vpnConnected() ? 0xFF34C759 : 0xFFFF3B30;
-        if (vpnIcon != null && vpnBtn != null && !vpnBtn.isFocused()) {
-            vpnIcon.setColorFilter(vpnColor, PorterDuff.Mode.SRC_IN);
+        if (vpnLabel != null && vpnBtn != null && !vpnBtn.isFocused()) {
+            vpnLabel.setTextColor(vpnColor);
         }
     }
 

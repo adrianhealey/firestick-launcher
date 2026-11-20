@@ -66,7 +66,8 @@ public class MainActivity extends Activity implements Tiles.Listener {
     private CalendarPanel calendar;
     private TextView vpnLabel;
     private FrameLayout vpnBtn;
-    private int vpnColor = 0xFFFF3B30;   // red until the VPN is confirmed up
+    private int vpnColor = 0xFFFF3B30;
+    private StepsBadge steps;   // red until the VPN is confirmed up
 
     private String focusPkg;            // tile to re-focus after a rebuild
     private String movingPkg;           // app being moved, or null
@@ -105,6 +106,7 @@ public class MainActivity extends Activity implements Tiles.Listener {
         if (Prefs.consumeChanged(this)) { apps = AppRepo.load(this); renderRow(); }
         if (weather != null) weather.refreshIfStale();
         if (calendar != null) calendar.refreshIfStale();
+        if (steps != null) steps.refreshIfStale();
         updateVpnStatus();
         ui.removeCallbacks(vpnPoll);
         ui.post(vpnPoll);
@@ -165,6 +167,9 @@ public class MainActivity extends Activity implements Tiles.Listener {
         top.setGravity(Gravity.CENTER_VERTICAL);
         top.setClipChildren(false);
         top.addView(new View(this), new LinearLayout.LayoutParams(0, 1, 1));
+        steps = new StepsBadge(this);
+        top.addView(steps, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(52)));
+        top.addView(new View(this), new LinearLayout.LayoutParams(dp(16), 1));
         vpnBtn = new FrameLayout(this);
         vpnBtn.setFocusable(true);
         vpnBtn.setClickable(true);

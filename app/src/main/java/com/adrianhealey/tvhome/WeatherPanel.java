@@ -72,6 +72,15 @@ final class WeatherPanel extends LinearLayout {
         words.addView(cond);
         words.addView(hilo);
         head.addView(words);
+        View hgap = new View(c);
+        head.addView(hgap, new LayoutParams(0, 1, 1f));
+        android.widget.ImageView caravan = new android.widget.ImageView(c);
+        caravan.setImageResource(R.drawable.ic_caravan);
+        caravan.setColorFilter(Color.WHITE, android.graphics.PorterDuff.Mode.SRC_IN);
+        caravan.setScaleType(android.widget.ImageView.ScaleType.FIT_CENTER);
+        LayoutParams clp = new LayoutParams(dp(48), dp(27));
+        clp.gravity = Gravity.TOP;
+        head.addView(caravan, clp);
         addView(head);
 
         View line = new View(c);

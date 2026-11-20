@@ -57,6 +57,15 @@ final class Prefs {
         sp.edit().putBoolean("cam_seeded", true).apply();
     }
 
+    /** One time only, add a built-in app to the Home row (respects a later removal). */
+    static void seedApp(Context c, String pkg, String flag) {
+        SharedPreferences sp = sp(c);
+        if (sp.getBoolean(flag, false)) return;
+        List<String> f = favs(c);
+        if (!f.contains(pkg)) { f.add(0, pkg); setFavs(c, f); }
+        sp.edit().putBoolean(flag, true).apply();
+    }
+
     /** True once after the home row or hidden list changed (then cleared). */
     static boolean consumeChanged(Context c) {
         boolean ch = sp(c).getBoolean("changed", false);

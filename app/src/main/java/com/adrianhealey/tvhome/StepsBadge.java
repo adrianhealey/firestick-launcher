@@ -31,9 +31,9 @@ final class StepsBadge extends FrameLayout {
 
     static final String BASE = "http://192.168.0.219:8123";
     // Primary then fallback step sensors (first with a real number wins).
+    // Only the Pixel Watch daily steps (Adrian).
     static final String[] ENTITIES = {
-            "sensor.google_pixel_watch_daily_steps",
-            "sensor.adrians_iphone_steps"
+            "sensor.google_pixel_watch_daily_steps"
     };
     private static final long REFRESH_MS = 5 * 60 * 1000L;
     private static final String TAG = "tvhome-steps";

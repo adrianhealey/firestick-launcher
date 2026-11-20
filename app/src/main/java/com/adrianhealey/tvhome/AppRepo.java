@@ -28,6 +28,8 @@ final class AppRepo {
     // Built-in "Cameras" app: opens the Home Assistant cameras web app in a WebView.
     static final String CAMERAS_PKG = "tvhome.builtin.cameras";
     static final String CAMERAS_URL = "https://adrianhealey.github.io/glasses/door/";
+    // Built-in "Sonarr" app: opens the Sonarr web UI in a WebView.
+    static final String SONARR_PKG = "tvhome.builtin.sonarr";
 
     static final class App {
         String pkg;
@@ -50,8 +52,10 @@ final class AppRepo {
         Collections.sort(list, (a, b) -> a.label.compareToIgnoreCase(b.label));
         Map<String, App> apps = new LinkedHashMap<>();
         apps.put(CAMERAS_PKG, cameras(c));   // built-in Cameras app, listed first
+        apps.put(SONARR_PKG, sonarr(c));      // built-in Sonarr web app
         for (App a : list) apps.put(a.pkg, a);
         Prefs.seedCameras(c, CAMERAS_PKG);   // one-time: put it on the Home row
+        Prefs.seedApp(c, SONARR_PKG, "sonarr_seeded");   // one-time: put Sonarr on the Home row
 
         // First run: hide Amazon's own extras (shopping, Luna, miniTV...).
         if (!Prefs.hasHidden(c)) {
@@ -72,6 +76,18 @@ final class AppRepo {
         a.isBanner = true;    // the icon is a full glass tile, like the other banners
         a.tint = 0xFF28324C;   // used for the blurred backdrop on the top shelf
         try { a.art = c.getDrawable(R.drawable.ic_cameras); } catch (Exception ignored) { }
+        return a;
+    }
+
+    /** Built-in Sonarr app: opens the Sonarr web UI in our own WebView activity. */
+    private static App sonarr(Context c) {
+        App a = new App();
+        a.pkg = SONARR_PKG;
+        a.label = "Sonarr";
+        a.launch = new Intent(c, SonarrActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        a.isBanner = true;
+        a.tint = 0xFF143046;
+        try { a.art = c.getDrawable(R.drawable.ic_sonarr); } catch (Exception ignored) { }
         return a;
     }
 

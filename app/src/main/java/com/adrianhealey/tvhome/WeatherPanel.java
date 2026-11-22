@@ -50,8 +50,8 @@ final class WeatherPanel extends LinearLayout {
         setPadding(dp(18), dp(12), dp(18), dp(8));
         GradientDrawable bg = new GradientDrawable();
         bg.setCornerRadius(dp(18));
-        bg.setColor(0x59101826);
-        bg.setStroke(dp(1), 0x26FFFFFF);
+        bg.setColor(Theme.GTA ? Theme.CARD_FILL : 0x59101826);
+        bg.setStroke(dp(1), Theme.GTA ? Theme.CARD_STROKE : 0x26FFFFFF);
         setBackground(bg);
 
         // header: big temperature on the left, place / conditions on the right

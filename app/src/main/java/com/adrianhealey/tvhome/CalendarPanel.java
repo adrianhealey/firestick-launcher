@@ -52,8 +52,8 @@ final class CalendarPanel extends LinearLayout {
         setPadding(dp(14), dp(8), dp(14), dp(8));
         GradientDrawable bg = new GradientDrawable();
         bg.setCornerRadius(dp(16));
-        bg.setColor(0x59101826);
-        bg.setStroke(dp(1), 0x26FFFFFF);
+        bg.setColor(Theme.GTA ? Theme.CARD_FILL : 0x59101826);
+        bg.setStroke(dp(1), Theme.GTA ? Theme.CARD_STROKE : 0x26FFFFFF);
         setBackground(bg);
 
         TextView label = text(13, 0x99FFFFFF, "sans-serif-medium");

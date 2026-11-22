@@ -47,6 +47,7 @@ final class StepsBadge extends FrameLayout {
         bg.setShape(GradientDrawable.RECTANGLE);
         bg.setCornerRadius(dp(26));
         bg.setColor(0x40FFFFFF);
+        if (Theme.GTA) { bg.setColor(0x33104A4A); bg.setStroke(dp(1), 0xAA1BE7E7); }  // cyan neon edge
         setBackground(bg);
         setPadding(dp(16), 0, dp(16), 0);
         setElevation(dp(2));

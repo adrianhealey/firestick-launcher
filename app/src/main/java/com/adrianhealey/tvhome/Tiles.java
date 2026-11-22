@@ -186,6 +186,7 @@ final class Tiles {
         final GradientDrawable bg = new GradientDrawable();
         bg.setShape(GradientDrawable.OVAL);
         bg.setColor(0x40FFFFFF);
+        if (Theme.GTA) { bg.setColor(Theme.PILL_IDLE); bg.setStroke(dp(c, 1), Theme.PILL_STROKE); }
         f.setBackground(bg);
         f.setElevation(dp(c, 2));
 
@@ -196,7 +197,8 @@ final class Tiles {
         f.addView(icon, new FrameLayout.LayoutParams(s, s, Gravity.CENTER));
 
         f.setOnFocusChangeListener((v, has) -> {
-            bg.setColor(has ? Color.WHITE : 0x40FFFFFF);
+            bg.setColor(has ? (Theme.GTA ? Theme.PILL_FOCUS : Color.WHITE)
+                            : (Theme.GTA ? Theme.PILL_IDLE : 0x40FFFFFF));
             icon.setColorFilter(has ? 0xFF1C1C1E : Color.WHITE, PorterDuff.Mode.SRC_IN);
             v.animate().scaleX(has ? 1.15f : 1f).scaleY(has ? 1.15f : 1f)
                     .translationZ(has ? dp(c, 10) : 0).setDuration(150).start();
@@ -218,9 +220,11 @@ final class Tiles {
         final GradientDrawable bg = new GradientDrawable();
         bg.setCornerRadius(dp(c, 24));
         bg.setColor(0x40FFFFFF);
+        if (Theme.GTA) { bg.setColor(Theme.PILL_IDLE); bg.setStroke(dp(c, 1), Theme.PILL_STROKE); }
         t.setBackground(bg);
         t.setOnFocusChangeListener((v, has) -> {
-            bg.setColor(has ? Color.WHITE : 0x40FFFFFF);
+            bg.setColor(has ? (Theme.GTA ? Theme.PILL_FOCUS : Color.WHITE)
+                            : (Theme.GTA ? Theme.PILL_IDLE : 0x40FFFFFF));
             t.setTextColor(has ? 0xFF1C1C1E : Color.WHITE);
             v.animate().scaleX(has ? 1.08f : 1f).scaleY(has ? 1.08f : 1f).setDuration(150).start();
         });

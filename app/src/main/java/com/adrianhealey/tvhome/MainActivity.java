@@ -140,17 +140,18 @@ public class MainActivity extends Activity implements Tiles.Listener {
 
     private View buildUi() {
         FrameLayout root = new FrameLayout(this);
-        root.setBackgroundColor(Color.BLACK);
+        root.setBackgroundColor(Theme.GTA ? 0xFF160A33 : Color.BLACK);
         root.setClipChildren(false);
 
         backdrop = new ImageView(this);
         backdrop.setScaleType(ImageView.ScaleType.CENTER_CROP);
-        backdropNow = new ColorDrawable(0xFF101014);
+        backdropNow = Theme.GTA ? Theme.sunset() : new ColorDrawable(0xFF101014);
         backdrop.setImageDrawable(backdropNow);
         root.addView(backdrop, match());
 
         View scrim = new View(this);
-        scrim.setBackground(new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
+        scrim.setBackground(Theme.GTA ? Theme.scrim()
+                : new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
                 new int[]{0x8C000000, 0x66000000, 0xE6000000}));
         root.addView(scrim, match());
 
@@ -178,6 +179,7 @@ public class MainActivity extends Activity implements Tiles.Listener {
         vpnBg.setShape(GradientDrawable.RECTANGLE);
         vpnBg.setCornerRadius(dp(26));
         vpnBg.setColor(0x40FFFFFF);
+        if (Theme.GTA) { vpnBg.setColor(Theme.PILL_IDLE); vpnBg.setStroke(dp(1), Theme.PILL_STROKE); }
         vpnBtn.setBackground(vpnBg);
         vpnBtn.setElevation(dp(2));
         vpnBtn.setPadding(dp(16), 0, dp(16), 0);
@@ -188,7 +190,8 @@ public class MainActivity extends Activity implements Tiles.Listener {
         vpnLabel.setTextColor(vpnColor);
         vpnBtn.addView(vpnLabel, new FrameLayout.LayoutParams(FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.CENTER));
         vpnBtn.setOnFocusChangeListener((v, has) -> {
-            vpnBg.setColor(has ? Color.WHITE : 0x40FFFFFF);
+            vpnBg.setColor(has ? (Theme.GTA ? Theme.PILL_FOCUS : Color.WHITE)
+                               : (Theme.GTA ? Theme.PILL_IDLE : 0x40FFFFFF));
             vpnLabel.setTextColor(has ? 0xFF1C1C1E : vpnColor);
             v.animate().scaleX(has ? 1.15f : 1f).scaleY(has ? 1.15f : 1f).setDuration(120).start();
         });
@@ -328,6 +331,7 @@ public class MainActivity extends Activity implements Tiles.Listener {
     }
 
     private void showShelf(AppRepo.App a) {
+        if (Theme.GTA) return;   // keep the fixed Vice City sunset backdrop
         if (a == null) {
             setBackdrop(new ColorDrawable(0xFF101014));
             return;

@@ -10,10 +10,12 @@ import android.content.Intent;
 import android.net.ConnectivityManager;
 import android.net.Network;
 import android.net.NetworkCapabilities;
+import android.net.Uri;
 import android.graphics.PorterDuff;
 import android.widget.Toast;
 import android.content.IntentFilter;
 import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.BitmapDrawable;
@@ -36,6 +38,9 @@ import android.widget.LinearLayout;
 import android.widget.TextClock;
 import android.widget.TextView;
 
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.InputStream;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
@@ -57,6 +62,8 @@ public class MainActivity extends Activity implements Tiles.Listener {
 
     private ImageView backdrop;
     private Drawable backdropNow;
+    private View scrim;
+    private static final int REQ_BG = 7001;
     private FrameLayout preview;
     private TextView title, hint;
     private LinearLayout row;
@@ -145,14 +152,12 @@ public class MainActivity extends Activity implements Tiles.Listener {
 
         backdrop = new ImageView(this);
         backdrop.setScaleType(ImageView.ScaleType.CENTER_CROP);
-        backdropNow = Theme.GTA ? Theme.sunset() : new ColorDrawable(0xFF101014);
+        backdropNow = baseBackdrop();
         backdrop.setImageDrawable(backdropNow);
         root.addView(backdrop, match());
 
-        View scrim = new View(this);
-        scrim.setBackground(Theme.GTA ? Theme.scrim()
-                : new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
-                new int[]{0x8C000000, 0x66000000, 0xE6000000}));
+        scrim = new View(this);
+        applyScrim();
         root.addView(scrim, match());
 
         LinearLayout col = new LinearLayout(this);
@@ -202,6 +207,11 @@ public class MainActivity extends Activity implements Tiles.Listener {
         });
         top.addView(vpnBtn, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(52)));
         top.addView(new View(this), new LinearLayout.LayoutParams(dp(16), 1));
+        if (Theme.GTA) {
+            top.addView(Tiles.roundButton(this, R.drawable.ic_wallpaper, "Background",
+                    v -> backgroundMenu()), new LinearLayout.LayoutParams(dp(52), dp(52)));
+            top.addView(new View(this), new LinearLayout.LayoutParams(dp(16), 1));
+        }
         top.addView(Tiles.roundButton(this, R.drawable.ic_apps, "All apps",
                 v -> startActivity(new Intent(this, AppsActivity.class))), new LinearLayout.LayoutParams(dp(52), dp(52)));
         top.addView(new View(this), new LinearLayout.LayoutParams(dp(16), 1));
@@ -331,7 +341,7 @@ public class MainActivity extends Activity implements Tiles.Listener {
     }
 
     private void showShelf(AppRepo.App a) {
-        if (Theme.GTA) return;   // keep the fixed Vice City sunset backdrop
+        if (Theme.GTA || hasCustomBg()) return;   // keep the fixed sunset / custom backdrop
         if (a == null) {
             setBackdrop(new ColorDrawable(0xFF101014));
             return;
@@ -351,6 +361,98 @@ public class MainActivity extends Activity implements Tiles.Listener {
         backdrop.setImageDrawable(t);
         t.startTransition(300);
         backdropNow = next;
+    }
+
+    // -------------------------------------------------- custom background (Shield)
+
+    private File customBg() { return new File(getFilesDir(), "custom_bg.jpg"); }
+    private boolean hasCustomBg() { return customBg().exists(); }
+
+    /** The backdrop to show when no app is focused: the user's own image if set, else the theme default. */
+    private Drawable baseBackdrop() {
+        if (hasCustomBg()) {
+            Bitmap bm = BitmapFactory.decodeFile(customBg().getPath());
+            if (bm != null) return new BitmapDrawable(getResources(), bm);
+        }
+        return Theme.GTA ? Theme.sunset() : new ColorDrawable(0xFF101014);
+    }
+
+    /** A neutral readability scrim over a custom photo, or the themed scrim otherwise. */
+    private void applyScrim() {
+        if (scrim == null) return;
+        if (hasCustomBg()) {
+            scrim.setBackground(new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
+                    new int[]{0x99000000, 0x22000000, 0xB3000000}));
+        } else {
+            scrim.setBackground(Theme.GTA ? Theme.scrim()
+                    : new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
+                    new int[]{0x8C000000, 0x66000000, 0xE6000000}));
+        }
+    }
+
+    /** Clicking the Background button: pick straight away, or offer change/remove if one is set. */
+    private void backgroundMenu() {
+        if (!hasCustomBg()) { pickBackground(); return; }
+        new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+                .setTitle("Background")
+                .setItems(new String[]{"Choose a different image", "Remove background"}, (d, which) -> {
+                    if (which == 0) pickBackground();
+                    else {
+                        customBg().delete();
+                        applyScrim();
+                        setBackdrop(baseBackdrop());
+                        Toast.makeText(this, "Background removed", Toast.LENGTH_SHORT).show();
+                    }
+                })
+                .show();
+    }
+
+    private void pickBackground() {
+        Intent i = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+        i.addCategory(Intent.CATEGORY_OPENABLE);
+        i.setType("image/*");
+        try { startActivityForResult(i, REQ_BG); }
+        catch (Exception e) { Toast.makeText(this, "No image picker available", Toast.LENGTH_SHORT).show(); }
+    }
+
+    @Override
+    protected void onActivityResult(int req, int res, Intent data) {
+        super.onActivityResult(req, res, data);
+        if (req == REQ_BG && res == RESULT_OK && data != null && data.getData() != null) {
+            if (saveBackground(data.getData())) {
+                applyScrim();
+                setBackdrop(baseBackdrop());
+                Toast.makeText(this, "Background updated", Toast.LENGTH_SHORT).show();
+            } else {
+                Toast.makeText(this, "Couldn't use that image", Toast.LENGTH_SHORT).show();
+            }
+        }
+    }
+
+    /** Decode the chosen image (down-sampled to ~1080p) and save it as the custom background. */
+    private boolean saveBackground(Uri uri) {
+        try {
+            BitmapFactory.Options bounds = new BitmapFactory.Options();
+            bounds.inJustDecodeBounds = true;
+            try (InputStream s = getContentResolver().openInputStream(uri)) {
+                BitmapFactory.decodeStream(s, null, bounds);
+            }
+            int sample = 1;
+            while (bounds.outWidth > 0 && bounds.outWidth / (sample * 2) >= 1920) sample *= 2;
+            BitmapFactory.Options opts = new BitmapFactory.Options();
+            opts.inSampleSize = sample;
+            Bitmap bm;
+            try (InputStream s = getContentResolver().openInputStream(uri)) {
+                bm = BitmapFactory.decodeStream(s, null, opts);
+            }
+            if (bm == null) return false;
+            try (FileOutputStream fos = new FileOutputStream(customBg())) {
+                bm.compress(Bitmap.CompressFormat.JPEG, 90, fos);
+            }
+            return true;
+        } catch (Exception e) {
+            return false;
+        }
     }
 
     // ------------------------------------------------------------ tile events

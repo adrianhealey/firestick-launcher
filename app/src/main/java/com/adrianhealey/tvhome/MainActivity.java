@@ -11,6 +11,12 @@ import android.net.ConnectivityManager;
 import android.net.Network;
 import android.net.NetworkCapabilities;
 import android.net.Uri;
+import android.Manifest;
+import android.content.ContentUris;
+import android.content.pm.PackageManager;
+import android.database.Cursor;
+import android.os.Build;
+import android.provider.MediaStore;
 import android.graphics.PorterDuff;
 import android.widget.Toast;
 import android.content.IntentFilter;
@@ -64,6 +70,7 @@ public class MainActivity extends Activity implements Tiles.Listener {
     private Drawable backdropNow;
     private View scrim;
     private static final int REQ_BG = 7001;
+    private static final int REQ_PERM = 7002;
     private FrameLayout preview;
     private TextView title, hint;
     private LinearLayout row;
@@ -146,6 +153,7 @@ public class MainActivity extends Activity implements Tiles.Listener {
     }
 
     private View buildUi() {
+        importDropZone();
         FrameLayout root = new FrameLayout(this);
         root.setBackgroundColor(Theme.GTA ? 0xFF160A33 : Color.BLACK);
         root.setClipChildren(false);
@@ -390,14 +398,23 @@ public class MainActivity extends Activity implements Tiles.Listener {
         }
     }
 
-    /** Clicking the Background button: pick straight away, or offer change/remove if one is set. */
+    /** Clicking the Background button: Android TV's file picker is unreliable, so the primary
+     *  option loads the newest image in the gallery (download one, then pick it here). */
     private void backgroundMenu() {
-        if (!hasCustomBg()) { pickBackground(); return; }
+        java.util.ArrayList<String> items = new java.util.ArrayList<>();
+        items.add("Use my latest downloaded image");
+        items.add("Browse for a file…");
+        if (hasCustomBg()) items.add("Remove background");
+        final String[] arr = items.toArray(new String[0]);
         new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
                 .setTitle("Background")
-                .setItems(new String[]{"Choose a different image", "Remove background"}, (d, which) -> {
-                    if (which == 0) pickBackground();
-                    else {
+                .setItems(arr, (d, which) -> {
+                    String choice = arr[which];
+                    if (choice.startsWith("Use my latest")) {
+                        loadLatestImage();
+                    } else if (choice.startsWith("Browse")) {
+                        pickBackground();
+                    } else {
                         customBg().delete();
                         applyScrim();
                         setBackdrop(baseBackdrop());
@@ -405,6 +422,75 @@ public class MainActivity extends Activity implements Tiles.Listener {
                     }
                 })
                 .show();
+    }
+
+    /** Load the most recently added image from the gallery (works around the broken TV picker). */
+    private void loadLatestImage() {
+        String perm = Build.VERSION.SDK_INT >= 33
+                ? Manifest.permission.READ_MEDIA_IMAGES : Manifest.permission.READ_EXTERNAL_STORAGE;
+        if (checkSelfPermission(perm) != PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(new String[]{perm}, REQ_PERM);
+            return;
+        }
+        Uri newest = newestImage();
+        if (newest == null) {
+            Toast.makeText(this, "No images found — download one first", Toast.LENGTH_LONG).show();
+            return;
+        }
+        if (saveBackground(newest)) {
+            applyScrim();
+            setBackdrop(baseBackdrop());
+            Toast.makeText(this, "Background updated", Toast.LENGTH_SHORT).show();
+        } else {
+            Toast.makeText(this, "Couldn't use that image", Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    private Uri newestImage() {
+        Uri coll = MediaStore.Images.Media.EXTERNAL_CONTENT_URI;
+        String[] proj = {MediaStore.Images.Media._ID};
+        try (Cursor c = getContentResolver().query(coll, proj, null, null,
+                MediaStore.Images.Media.DATE_ADDED + " DESC")) {
+            if (c != null && c.moveToFirst()) {
+                long id = c.getLong(c.getColumnIndexOrThrow(MediaStore.Images.Media._ID));
+                return ContentUris.withAppendedId(coll, id);
+            }
+        } catch (Exception e) {
+            // fall through
+        }
+        return null;
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int req, String[] perms, int[] res) {
+        super.onRequestPermissionsResult(req, perms, res);
+        if (req == REQ_PERM) {
+            if (res.length > 0 && res[0] == PackageManager.PERMISSION_GRANTED) loadLatestImage();
+            else Toast.makeText(this, "Permission needed to read your images", Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    /** ADB drop-zone: an image left at <externalFilesDir>/background.(jpg|png|webp) is imported on launch. */
+    private void importDropZone() {
+        File dir = getExternalFilesDir(null);
+        if (dir == null) return;
+        for (String name : new String[]{"background.jpg", "background.jpeg", "background.png", "background.webp"}) {
+            File f = new File(dir, name);
+            if (f.exists() && f.length() > 0) {
+                try {
+                    Bitmap bm = BitmapFactory.decodeFile(f.getPath());
+                    if (bm != null) {
+                        try (FileOutputStream fos = new FileOutputStream(customBg())) {
+                            bm.compress(Bitmap.CompressFormat.JPEG, 90, fos);
+                        }
+                    }
+                } catch (Exception e) {
+                    // ignore
+                }
+                f.delete();
+                break;
+            }
+        }
     }
 
     private void pickBackground() {

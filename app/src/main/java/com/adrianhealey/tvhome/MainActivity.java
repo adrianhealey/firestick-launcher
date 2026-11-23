@@ -16,6 +16,7 @@ import android.content.ContentUris;
 import android.content.pm.PackageManager;
 import android.database.Cursor;
 import android.os.Build;
+import android.os.Environment;
 import android.provider.MediaStore;
 import android.graphics.PorterDuff;
 import android.widget.Toast;
@@ -424,7 +425,8 @@ public class MainActivity extends Activity implements Tiles.Listener {
                 .show();
     }
 
-    /** Load the most recently added image from the gallery (works around the broken TV picker). */
+    /** Load the newest image the user has saved. Scans the filesystem directly because Android TV's
+     *  media index frequently misses the Downloader app's subfolder; falls back to MediaStore. */
     private void loadLatestImage() {
         String perm = Build.VERSION.SDK_INT >= 33
                 ? Manifest.permission.READ_MEDIA_IMAGES : Manifest.permission.READ_EXTERNAL_STORAGE;
@@ -432,17 +434,62 @@ public class MainActivity extends Activity implements Tiles.Listener {
             requestPermissions(new String[]{perm}, REQ_PERM);
             return;
         }
-        Uri newest = newestImage();
-        if (newest == null) {
-            Toast.makeText(this, "No images found — download one first", Toast.LENGTH_LONG).show();
-            return;
+        File f = newestImageFile();
+        boolean ok = f != null && saveBackgroundFile(f);
+        if (!ok) {                       // fall back to the gallery index
+            Uri newest = newestImage();
+            ok = newest != null && saveBackground(newest);
         }
-        if (saveBackground(newest)) {
+        if (ok) {
             applyScrim();
             setBackdrop(baseBackdrop());
             Toast.makeText(this, "Background updated", Toast.LENGTH_SHORT).show();
         } else {
-            Toast.makeText(this, "Couldn't use that image", Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, "No image found — download one to your Downloads folder first", Toast.LENGTH_LONG).show();
+        }
+    }
+
+    /** Newest image file across Download (incl. subfolders), Pictures and DCIM. */
+    private File newestImageFile() {
+        File ext = Environment.getExternalStorageDirectory();
+        File[] roots = {new File(ext, "Download"), new File(ext, "Pictures"), new File(ext, "DCIM")};
+        File best = null;
+        for (File r : roots) best = newestUnder(r, best, 0);
+        return best;
+    }
+
+    private File newestUnder(File dir, File best, int depth) {
+        if (dir == null || !dir.isDirectory() || depth > 3) return best;
+        File[] kids = dir.listFiles();
+        if (kids == null) return best;
+        for (File f : kids) {
+            if (f.isDirectory()) { best = newestUnder(f, best, depth + 1); continue; }
+            String n = f.getName().toLowerCase();
+            if (n.endsWith(".jpg") || n.endsWith(".jpeg") || n.endsWith(".png") || n.endsWith(".webp")) {
+                if (best == null || f.lastModified() > best.lastModified()) best = f;
+            }
+        }
+        return best;
+    }
+
+    /** Decode a file (down-sampled to ~1080p) and save it as the custom background. */
+    private boolean saveBackgroundFile(File src) {
+        try {
+            BitmapFactory.Options bounds = new BitmapFactory.Options();
+            bounds.inJustDecodeBounds = true;
+            BitmapFactory.decodeFile(src.getPath(), bounds);
+            int sample = 1;
+            while (bounds.outWidth > 0 && bounds.outWidth / (sample * 2) >= 1920) sample *= 2;
+            BitmapFactory.Options opts = new BitmapFactory.Options();
+            opts.inSampleSize = sample;
+            Bitmap bm = BitmapFactory.decodeFile(src.getPath(), opts);
+            if (bm == null) return false;
+            try (FileOutputStream fos = new FileOutputStream(customBg())) {
+                bm.compress(Bitmap.CompressFormat.JPEG, 90, fos);
+            }
+            return true;
+        } catch (Exception e) {
+            return false;
         }
     }
 

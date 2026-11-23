@@ -83,9 +83,11 @@ final class Tiles {
     /** The picture part of an icon: banner fills it, or icon centred on its own colour. */
     static FrameLayout card(Context c, AppRepo.App a, int w, int h, int radius) {
         FrameLayout card = new FrameLayout(c);
-        GradientDrawable bg = new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
-                new int[]{lighten(a.tint), a.tint});
+        GradientDrawable bg = Theme.GTA
+                ? new GradientDrawable(GradientDrawable.Orientation.TL_BR, Theme.tileGradient(a.pkg))
+                : new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, new int[]{lighten(a.tint), a.tint});
         bg.setCornerRadius(radius);
+        if (Theme.GTA) bg.setStroke(dp(c, 1), Theme.TILE_EDGE);
         card.setBackground(bg);
         card.setOutlineProvider(new ViewOutlineProvider() {
             @Override public void getOutline(View v, Outline o) {
@@ -135,7 +137,8 @@ final class Tiles {
         // light sheen across the top of the icon when selected
         final View sheen = new View(c);
         GradientDrawable sh = new GradientDrawable(GradientDrawable.Orientation.TL_BR,
-                new int[]{0x55FFFFFF, 0x10FFFFFF, 0x00FFFFFF});
+                Theme.GTA ? new int[]{0x66FF2E9A, 0x1117D9D9, 0x00000000}
+                          : new int[]{0x55FFFFFF, 0x10FFFFFF, 0x00FFFFFF});
         sheen.setBackground(sh);
         sheen.setAlpha(0f);
         card.addView(sheen, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,

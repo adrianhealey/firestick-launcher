@@ -41,4 +41,20 @@ final class Theme {
         return new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
                 new int[]{0x55160A33, 0x22200A3A, 0x99140826});
     }
+
+    // App-tile backgrounds: neon pairs, all settling into a deep indigo so the set reads as one.
+    private static final int[][] TILES = {
+            {0xFFFF2E9A, 0xFF3A1466},   // pink -> indigo
+            {0xFF17D9D9, 0xFF2A0F4E},   // cyan -> indigo
+            {0xFFFF6A3C, 0xFF7A1FA2},   // orange -> purple
+            {0xFFB54CFF, 0xFF2A0F4E},   // violet -> indigo
+    };
+
+    /** A neon gradient for an app tile, chosen deterministically from the package name. */
+    static int[] tileGradient(String key) {
+        int i = Math.floorMod(key == null ? 0 : key.hashCode(), TILES.length);
+        return TILES[i].clone();
+    }
+
+    static final int TILE_EDGE = 0x66FF2E9A;   // soft pink edge around each tile
 }

@@ -4,14 +4,14 @@ import android.graphics.drawable.GradientDrawable;
 import android.os.Build;
 
 /**
- * GTA VI "Vice City" look. Applied ONLY on the NVIDIA Shield; the Amazon Fire Stick
- * keeps its original Apple-TV glass theme. Everything here is gated behind {@link #GTA}.
+ * GTA VI "Vice City" look. Applied on both the NVIDIA Shield and the Amazon Fire Stick.
+ * Everything here is gated behind {@link #GTA}.
  */
 final class Theme {
     private Theme() { }
 
-    /** True on the NVIDIA Shield only (Fire Stick reports manufacturer "Amazon"). */
-    static final boolean GTA = "NVIDIA".equalsIgnoreCase(Build.MANUFACTURER);
+    /** True on all devices — both the Shield and the Fire Stick use the Vice City theme. */
+    static final boolean GTA = true;
 
     // ---- Vice City neon palette ----
     static final int PINK   = 0xFFFF2E9A;   // hot magenta-pink

@@ -82,7 +82,7 @@ final class WeatherPanel extends LinearLayout {
         head.addView(hgap, new LayoutParams(0, 1, 1f));
         // Caravan room temperature, shown just left of the caravan icon.
         caravanTemp = text(15, Color.WHITE, "sans-serif-medium");
-        caravanTemp.setText("--°");
+        caravanTemp.setText("🌡️ --°");
         LayoutParams ctlp = new LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT);
         ctlp.gravity = Gravity.TOP;
         ctlp.rightMargin = dp(5);
@@ -197,7 +197,7 @@ final class WeatherPanel extends LinearLayout {
             if (st.isEmpty() || st.equals("unknown") || st.equals("unavailable")) return null;
             double v;
             try { v = Double.parseDouble(st); } catch (NumberFormatException e) { return null; }
-            return Math.round(v) + "°";
+            return "🌡️ " + Math.round(v) + "°";
         } catch (Exception ignored) {
             return null;
         } finally {

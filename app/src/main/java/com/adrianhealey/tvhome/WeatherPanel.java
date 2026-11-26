@@ -40,8 +40,14 @@ final class WeatherPanel extends LinearLayout {
     static final double LAT = 53.20127, LON = -2.60761;
     private static final long REFRESH_MS = 30 * 60 * 1000L;
 
+    // Caravan Truma current room temperature, from Home Assistant over the LAN,
+    // using the same access token the Cameras app stores on this device.
+    private static final String HA_BASE = "http://192.168.0.219:8123";
+    private static final String CARAVAN_ENTITY = "sensor.caravan_caravan_truma_current_room_temperature";
+    private static final long CARAVAN_REFRESH_MS = 10 * 60 * 1000L;
+
     private final Handler ui = new Handler(Looper.getMainLooper());
-    private final TextView temp, place, cond, hilo;
+    private final TextView temp, place, cond, hilo, caravanTemp;
     private final LinearLayout days;
 
     WeatherPanel(Context c) {
@@ -74,6 +80,15 @@ final class WeatherPanel extends LinearLayout {
         head.addView(words);
         View hgap = new View(c);
         head.addView(hgap, new LayoutParams(0, 1, 1f));
+        // Caravan room temperature, shown just left of the caravan icon.
+        caravanTemp = text(15, Color.WHITE, "sans-serif-medium");
+        caravanTemp.setText("--°");
+        LayoutParams ctlp = new LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT);
+        ctlp.gravity = Gravity.TOP;
+        ctlp.rightMargin = dp(5);
+        head.addView(caravanTemp, ctlp);
+        String cachedCaravan = prefs().getString("caravan", null);
+        if (cachedCaravan != null) caravanTemp.setText(cachedCaravan);
         android.widget.ImageView caravan = new android.widget.ImageView(c);
         caravan.setImageResource(R.drawable.ic_caravan);
         caravan.setColorFilter(Color.WHITE, android.graphics.PorterDuff.Mode.SRC_IN);
@@ -108,10 +123,12 @@ final class WeatherPanel extends LinearLayout {
     @Override protected void onAttachedToWindow() {
         super.onAttachedToWindow();
         ui.post(refresh);
+        ui.post(caravanRefresh);
     }
 
     @Override protected void onDetachedFromWindow() {
         ui.removeCallbacks(refresh);
+        ui.removeCallbacks(caravanRefresh);
         super.onDetachedFromWindow();
     }
 
@@ -121,6 +138,8 @@ final class WeatherPanel extends LinearLayout {
             ui.removeCallbacks(refresh);
             ui.post(refresh);
         }
+        ui.removeCallbacks(caravanRefresh);
+        ui.post(caravanRefresh);
     }
 
     private final Runnable refresh = new Runnable() {
@@ -138,6 +157,53 @@ final class WeatherPanel extends LinearLayout {
             ui.postDelayed(this, REFRESH_MS);
         }
     };
+
+    private final Runnable caravanRefresh = new Runnable() {
+        @Override public void run() {
+            final String token = token();
+            new Thread(() -> {
+                final String txt = fetchCaravan(token);
+                if (txt != null) {
+                    ui.post(() -> {
+                        caravanTemp.setText(txt);
+                        prefs().edit().putString("caravan", txt).apply();
+                    });
+                }
+            }).start();
+            ui.postDelayed(this, CARAVAN_REFRESH_MS);
+        }
+    };
+
+    private String token() {
+        return getContext().getSharedPreferences("cameras", Context.MODE_PRIVATE).getString("token", "");
+    }
+
+    private static String fetchCaravan(String token) {
+        if (token == null || token.isEmpty()) return null;
+        HttpURLConnection con = null;
+        try {
+            con = (HttpURLConnection) new URL(HA_BASE + "/api/states/" + CARAVAN_ENTITY).openConnection();
+            con.setConnectTimeout(8000);
+            con.setReadTimeout(8000);
+            con.setRequestProperty("Authorization", "Bearer " + token);
+            con.setRequestProperty("Accept", "application/json");
+            if (con.getResponseCode() != 200) return null;
+            StringBuilder sb = new StringBuilder();
+            try (BufferedReader r = new BufferedReader(new InputStreamReader(con.getInputStream(), "UTF-8"))) {
+                String line;
+                while ((line = r.readLine()) != null) sb.append(line);
+            }
+            String st = new JSONObject(sb.toString()).optString("state", "");
+            if (st.isEmpty() || st.equals("unknown") || st.equals("unavailable")) return null;
+            double v;
+            try { v = Double.parseDouble(st); } catch (NumberFormatException e) { return null; }
+            return Math.round(v) + "°";
+        } catch (Exception ignored) {
+            return null;
+        } finally {
+            if (con != null) con.disconnect();
+        }
+    }
 
     private SharedPreferences prefs() {
         return getContext().getSharedPreferences("weather", Context.MODE_PRIVATE);
